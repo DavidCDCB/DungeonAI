@@ -19,6 +19,15 @@ export function formatElapsed(ms: number): string {
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`
 }
 
+/** 45,2 tok/s */
+export function formatRate(tokensPerSecond: number): string {
+  const value = tokensPerSecond.toLocaleString('es', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })
+  return `${value} tok/s`
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) {
     return `${(bytes / (1024 * 1024)).toLocaleString('es', { maximumFractionDigits: 1 })} MB`

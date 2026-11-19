@@ -174,7 +174,7 @@ function roll() {
             v-for="sides in DICE_TYPES"
             :key="sides"
             type="button"
-            class="rounded-lg border py-2 font-mono text-sm transition"
+            class="rounded-lg border py-2 font-mono text-sm transition pointer-coarse:py-2.5"
             :class="
               group.die === `d${sides}`
                 ? 'border-gold bg-gold/15 text-gold-bright'

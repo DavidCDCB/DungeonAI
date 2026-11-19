@@ -20,6 +20,11 @@ export function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / CHARS_PER_TOKEN))
 }
 
+/** Tokens aproximados para una cantidad de caracteres. */
+export function charsToTokens(chars: number): number {
+  return chars > 0 ? Math.max(1, Math.ceil(chars / CHARS_PER_TOKEN)) : 0
+}
+
 export function charsForTokens(tokens: number): number {
   return tokens > 0 ? Math.floor(tokens * CHARS_PER_TOKEN) : 0
 }

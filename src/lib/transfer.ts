@@ -199,7 +199,7 @@ function normalizeUsage(value: any): TokenUsage | null {
   const completion = number(value.completion)
   const total = number(value.total) || prompt + completion
   if (total <= 0) return null
-  return {
+  const usage: TokenUsage = {
     prompt,
     completion,
     total,
@@ -208,4 +208,7 @@ function normalizeUsage(value: any): TokenUsage | null {
     estimated: Boolean(value.estimated),
     sentMessages: number(value.sentMessages),
   }
+  if (number(value.tokensPerSecond) > 0) usage.tokensPerSecond = number(value.tokensPerSecond)
+  if (number(value.durationMs) > 0) usage.durationMs = number(value.durationMs)
+  return usage
 }

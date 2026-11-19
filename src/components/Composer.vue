@@ -13,7 +13,7 @@ import {
   X,
 } from '@lucide/vue'
 import { useGame } from '../composables/useGame'
-import { formatTokens } from '../lib/format'
+import { formatNumber, formatRate, formatTokens } from '../lib/format'
 import { parseRollMessage } from '../lib/dice'
 import { OOC_COMMANDS } from '../lib/commands'
 
@@ -51,9 +51,9 @@ const menuRoot = ref<HTMLElement | null>(null)
 const commands = OOC_COMMANDS
 
 const placeholder = computed(() => {
-  if (!hasMessages.value) return 'Describe cómo quieres empezar, o pulsa «Comenzar aventura»…'
-  if (loading.value) return 'Puedes ir escribiendo tu próxima acción…'
-  if (diceRequested.value) return 'Lanza los dados o responde al DM…'
+  if (!hasMessages.value) return '¿Cómo quieres empezar?'
+  if (loading.value) return 'Tu próxima acción…'
+  if (diceRequested.value) return 'Lanza o responde al DM…'
   return `¿Qué hace ${settings.character}?`
 })
 
@@ -68,14 +68,22 @@ const usageText = computed(() => {
   if (!usage.value || usage.value.total <= 0) return ''
   const prefix = usage.value.estimated ? '~' : ''
   const context = `Contexto: ${prefix}${formatTokens(usage.value.total)} tokens`
-  return usage.value.reasoning > 0
-    ? `${context} · Razonamiento: ${prefix}${formatTokens(usage.value.reasoning)} tokens`
-    : context
+  const parts = [context]
+  if (usage.value.reasoning > 0) {
+    parts.push(`Razonamiento: ${prefix}${formatNumber(usage.value.reasoning)} tokens`)
+  }
+  if (usage.value.tokensPerSecond) parts.push(formatRate(usage.value.tokensPerSecond))
+  return parts.join(' · ')
 })
 
 function autosize() {
   const element = textarea.value
   if (!element) return
+  // Vacío: una línea. (scrollHeight incluiría el placeholder si se parte en dos.)
+  if (!element.value) {
+    element.style.height = ''
+    return
+  }
   element.style.height = 'auto'
   element.style.height = `${Math.min(element.scrollHeight, 200)}px`
 }
@@ -92,8 +100,18 @@ watch(composerFocusNonce, async () => {
   autosize()
 })
 
+/**
+ * Sin v-model: en Android (Gboard) la palabra en curso está «en composición»
+ * y v-model no la registra hasta el siguiente espacio, así que el botón Enviar
+ * seguía deshabilitado con una sola palabra escrita.
+ */
+function onInput(event: Event) {
+  draft.value = (event.target as HTMLTextAreaElement).value
+  autosize()
+}
+
 function submit() {
-  const text = draft.value.trim()
+  const text = (textarea.value?.value ?? draft.value).trim()
   if (!text || loading.value) return
   if (!configured.value) {
     openSettings('connection')
@@ -130,7 +148,9 @@ defineExpose({ focus: () => textarea.value?.focus() })
 </script>
 
 <template>
-  <footer class="pb-safe shrink-0 border-t border-divider/80 bg-ink/85 px-3 pt-3 backdrop-blur-md sm:px-6">
+  <footer
+    class="group/composer pb-safe shrink-0 border-t border-divider/80 bg-ink/85 px-2.5 pt-2 backdrop-blur-md sm:px-6 sm:pt-3"
+  >
     <div class="mx-auto w-full max-w-3xl space-y-2">
       <div
         v-if="errorMessage"
@@ -178,52 +198,59 @@ defineExpose({ focus: () => textarea.value?.focus() })
 
       <div
         v-if="diceRequested && !loading"
-        class="animate-fade-up rounded-2xl border border-gold-dim/50 bg-gradient-to-r from-gold/[0.12] via-gold/[0.05] to-transparent p-3"
+        class="animate-fade-up rounded-2xl border border-gold-dim/50 bg-gradient-to-r from-gold/[0.12] via-gold/[0.05] to-transparent p-2.5 sm:p-3"
       >
-        <p class="flex items-center gap-2 text-sm font-medium text-gold-bright">
+        <p class="flex items-center gap-2 px-0.5 text-[13px] font-medium text-gold-bright sm:text-sm">
           <Dices class="h-4 w-4" />
           El Dungeon Master pide una tirada
         </p>
-        <div class="mt-2.5 flex flex-wrap gap-2">
+        <div
+          class="-mx-2.5 mt-2 flex gap-2 overflow-x-auto px-2.5 pb-0.5 [scrollbar-width:none] sm:mx-0 sm:mt-2.5 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden"
+        >
           <button
             v-for="suggestion in diceSuggestions"
             :key="suggestion.label"
             type="button"
-            class="btn-primary btn-sm"
+            class="btn-primary btn-sm shrink-0 whitespace-nowrap"
             @click="rollAndSend(suggestion.requests)"
           >
             <Dices class="h-3.5 w-3.5" />
             Lanzar {{ suggestion.label }}
           </button>
-          <button type="button" class="btn-ghost btn-sm" @click="openDice()">
+          <button type="button" class="btn-ghost btn-sm shrink-0 whitespace-nowrap" @click="openDice()">
             {{ diceSuggestions.length ? 'Otra tirada…' : 'Elegir dados…' }}
           </button>
-          <button type="button" class="btn-ghost btn-sm" @click="send('<lanza por mí>')">
+          <button type="button" class="btn-ghost btn-sm shrink-0 whitespace-nowrap" @click="send('<lanza por mí>')">
             Que lance el DM
           </button>
         </div>
       </div>
 
+      <!--
+        Móvil: una sola fila (dados · comandos · texto · enviar), como un chat.
+        Desde sm: texto arriba y herramientas debajo.
+      -->
       <div
-        class="rounded-2xl border border-divider bg-surface-high/90 shadow-[0_18px_40px_-28px_rgb(0_0_0/0.9)] transition focus-within:border-gold-dim/70"
+        class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-x-0.5 rounded-2xl border border-divider bg-surface-high/90 p-1 shadow-[0_18px_40px_-28px_rgb(0_0_0/0.9)] transition [grid-template-areas:'tools_text_send'] focus-within:border-[#4a4152] sm:gap-x-1 sm:p-0 sm:[grid-template-areas:'text_text_text'_'tools_hint_send']"
       >
         <label for="composer" class="sr-only">Tu acción</label>
         <textarea
           id="composer"
           ref="textarea"
-          v-model="draft"
+          :value="draft"
           rows="1"
           enterkeyhint="send"
           autocomplete="off"
+          autocapitalize="sentences"
           :placeholder="placeholder"
-          class="block max-h-[200px] min-h-[48px] w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[15px] leading-6 text-parchment outline-none placeholder:text-faint focus-visible:outline-none"
+          class="block max-h-[160px] min-h-[44px] w-full resize-none bg-transparent px-2 py-2.5 text-base leading-6 text-parchment outline-none [grid-area:text] placeholder:text-faint focus-visible:outline-none short:max-h-[88px] sm:max-h-[200px] sm:min-h-[46px] sm:px-4 sm:pt-3 sm:pb-1 sm:text-[15px]"
           @keydown="onKeydown"
-          @input="autosize"
+          @input="onInput"
         />
-        <div class="flex items-center gap-1 px-2 pb-2">
+        <div class="flex items-center gap-0.5 [grid-area:tools] sm:gap-1 sm:pb-2 sm:pl-2">
           <button
             type="button"
-            class="icon-btn-sm h-9 w-9"
+            class="icon-btn-sm h-9 w-9 pointer-coarse:h-11 pointer-coarse:w-10 sm:pointer-coarse:w-11"
             :class="diceRequested && !loading ? 'animate-glow text-gold' : ''"
             :disabled="!hasMessages || loading"
             aria-label="Lanzar dados"
@@ -235,7 +262,7 @@ defineExpose({ focus: () => textarea.value?.focus() })
           <div ref="menuRoot" class="relative" @focusout="onMenuFocusOut">
             <button
               type="button"
-              class="icon-btn-sm h-9 w-9"
+              class="icon-btn-sm h-9 w-9 pointer-coarse:h-11 pointer-coarse:w-10 sm:pointer-coarse:w-11"
               :disabled="!hasMessages || loading"
               aria-label="Comandos del DM"
               title="Comandos fuera de personaje"
@@ -254,7 +281,7 @@ defineExpose({ focus: () => textarea.value?.focus() })
               <div
                 v-if="menuOpen"
                 role="menu"
-                class="absolute bottom-11 left-0 z-20 w-60 overflow-hidden rounded-xl border border-divider bg-surface-higher py-1 shadow-2xl"
+                class="absolute bottom-full left-0 z-20 mb-2 w-64 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-divider bg-surface-higher py-1 shadow-2xl"
                 @keydown.escape.stop="menuOpen = false"
               >
                 <p class="px-3 pt-1.5 pb-1 text-[10px] font-semibold tracking-[0.14em] text-faint uppercase">
@@ -265,7 +292,7 @@ defineExpose({ focus: () => textarea.value?.focus() })
                   :key="item.command"
                   type="button"
                   role="menuitem"
-                  class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-parchment hover:bg-white/5 focus:bg-white/5 focus:outline-none"
+                  class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-parchment hover:bg-white/5 focus:bg-white/5 focus:outline-none pointer-coarse:py-3"
                   @click="runCommand(item.command)"
                 >
                   {{ item.label }}
@@ -274,39 +301,44 @@ defineExpose({ focus: () => textarea.value?.focus() })
               </div>
             </Transition>
           </div>
-          <p class="ml-1 hidden min-w-0 truncate text-[11px] text-faint md:block">
-            "comillas" para hablar · {llaves} para actuar · &lt;…&gt; fuera de personaje
-          </p>
-          <div class="ml-auto flex items-center gap-2">
-            <button
-              v-if="loading"
-              type="button"
-              class="btn-ghost btn-sm h-9"
-              @click="cancelTurn"
-            >
-              <Square class="h-3 w-3 fill-current" />
-              Detener
-            </button>
-            <button
-              v-else
-              type="button"
-              class="btn-primary h-9 w-9 !rounded-xl !p-0"
-              :disabled="!draft.trim()"
-              aria-label="Enviar"
-              title="Enviar (Enter)"
-              @click="submit"
-            >
-              <SendHorizontal class="h-[18px] w-[18px]" />
-            </button>
-          </div>
+        </div>
+        <p
+          class="ml-1 hidden min-w-0 self-center truncate pb-2 text-[11px] text-faint [grid-area:hint] md:block"
+        >
+          "comillas" para hablar · {llaves} para actuar · &lt;…&gt; fuera de personaje
+        </p>
+        <div class="flex items-center justify-end [grid-area:send] sm:pr-2 sm:pb-2">
+          <button
+            v-if="loading"
+            type="button"
+            class="btn-ghost btn-sm h-9 pointer-coarse:h-11 max-sm:w-11 max-sm:!px-0"
+            aria-label="Detener"
+            @click="cancelTurn"
+          >
+            <Square class="h-3 w-3 fill-current" />
+            <span class="max-sm:sr-only">Detener</span>
+          </button>
+          <button
+            v-else
+            type="button"
+            class="btn-primary h-9 w-9 !rounded-xl !p-0 pointer-coarse:h-11 pointer-coarse:w-11"
+            :disabled="!draft.trim()"
+            aria-label="Enviar"
+            title="Enviar (Enter)"
+            @click="submit"
+          >
+            <SendHorizontal class="h-[18px] w-[18px]" />
+          </button>
         </div>
       </div>
 
-      <div class="flex min-h-5 items-center gap-3 px-1 text-[11px] text-faint">
+      <div
+        class="flex min-h-5 items-center gap-3 px-1 text-[11px] text-faint short:hidden max-sm:group-has-[textarea:focus]/composer:hidden"
+      >
         <button
           v-if="usageText"
           type="button"
-          class="truncate hover:text-gold-bright"
+          class="truncate hover:text-gold-bright pointer-coarse:-my-3 pointer-coarse:py-3"
           title="Ver desglose de tokens"
           @click="contextOpen = true"
         >

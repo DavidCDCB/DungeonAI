@@ -22,7 +22,7 @@ import {
 import { useGame } from '../composables/useGame'
 import { isActiveCombat, memoryEntries } from '../lib/gameState'
 import { providerFor } from '../lib/providers'
-import { formatNumber, formatTokens } from '../lib/format'
+import { formatNumber, formatRate, formatTokens } from '../lib/format'
 
 const {
   settings,
@@ -178,6 +178,10 @@ const providerLabel = computed(() => providerFor(settings.baseUrl).label)
         <div class="flex justify-between">
           <dt class="text-faint">Razonamiento</dt>
           <dd class="font-mono text-parchment">{{ usage?.reasoning ? formatNumber(usage.reasoning) : '—' }}</dd>
+        </div>
+        <div v-if="usage?.tokensPerSecond" class="flex justify-between">
+          <dt class="text-faint">Velocidad</dt>
+          <dd class="font-mono text-parchment">{{ formatRate(usage.tokensPerSecond) }}</dd>
         </div>
         <div class="flex justify-between gap-3">
           <dt class="text-faint">Proveedor</dt>

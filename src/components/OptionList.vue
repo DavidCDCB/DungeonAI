@@ -24,7 +24,7 @@ function customize(option: string) {
       <li v-for="(option, index) in options" :key="`${index}-${option}`" class="group relative">
         <button
           type="button"
-          class="flex w-full items-start gap-3 rounded-xl border py-3 pr-12 pl-3.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex w-full items-start gap-3 rounded-xl border py-3 pr-12 pl-3 sm:pl-3.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50"
           :class="
             isJokerOption(option)
               ? 'border-arcane/35 bg-arcane/[0.06] hover:border-arcane/80 hover:bg-arcane/10'
@@ -48,7 +48,7 @@ function customize(option: string) {
         </button>
         <button
           type="button"
-          class="icon-btn-sm absolute top-2 right-2 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
+          class="icon-btn-sm absolute top-2 right-2 pointer-coarse:top-1 pointer-coarse:right-1 pointer-fine:opacity-0 pointer-fine:group-focus-within:opacity-100 pointer-fine:group-hover:opacity-100"
           :aria-label="`Editar la opción ${index + 1} antes de enviarla`"
           title="Editar antes de enviar"
           :disabled="loading"

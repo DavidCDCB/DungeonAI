@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { Check, Copy, Dices, Pause, Play, RefreshCw, Volume2 } from '@lucide/vue'
 import type { ChatMessage } from '../types'
 import { renderMarkdown } from '../lib/markdown'
+import { formatNumber, formatRate } from '../lib/format'
 import { useGame } from '../composables/useGame'
 import { useToasts } from '../composables/useToasts'
 import AppLogo from './AppLogo.vue'
@@ -20,6 +21,7 @@ const speaking = computed(() => game.speakingId.value === props.message.id)
 const paused = computed(() => speaking.value && game.ttsPaused.value)
 const repairing = computed(() => props.streaming && game.phase.value === 'repairing')
 const copied = ref(false)
+const stats = computed(() => game.liveStats.value)
 
 async function copy() {
   try {
@@ -51,10 +53,23 @@ async function copy() {
         <Dices class="h-3 w-3" />
         Tirada pendiente
       </span>
+      <span
+        v-if="streaming && message.display && !repairing"
+        class="ml-auto flex items-center gap-2 text-[11px] whitespace-nowrap text-faint tabular-nums"
+        title="Estimación en vivo"
+      >
+        <span v-if="stats.reasoningTokens" class="hidden sm:inline">
+          razonó ~{{ formatNumber(stats.reasoningTokens) }} ·
+        </span>
+        <span>~{{ formatNumber(stats.contentTokens) }} tokens</span>
+        <span class="rounded-md border border-divider bg-ink-soft px-1.5 py-0.5 font-mono text-gold-bright">
+          {{ stats.contentRate ? formatRate(stats.contentRate) : '— tok/s' }}
+        </span>
+      </span>
       <div
         v-if="!streaming"
-        class="ml-auto flex items-center gap-0.5 transition-opacity sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
-        :class="speaking ? 'sm:opacity-100' : ''"
+        class="ml-auto flex items-center gap-0.5 transition-opacity pointer-fine:opacity-0 pointer-fine:group-focus-within:opacity-100 pointer-fine:group-hover:opacity-100"
+        :class="speaking ? 'pointer-fine:opacity-100' : ''"
       >
         <button
           type="button"
@@ -87,7 +102,7 @@ async function copy() {
     </div>
 
     <div
-      class="rounded-2xl border bg-surface/75 px-5 py-4 shadow-[inset_0_1px_0_rgb(255_255_255/0.03),0_24px_48px_-36px_rgb(0_0_0/0.9)] transition-colors sm:px-7 sm:py-6"
+      class="rounded-2xl border bg-surface/75 px-4 py-4 shadow-[inset_0_1px_0_rgb(255_255_255/0.03),0_24px_48px_-36px_rgb(0_0_0/0.9)] transition-colors sm:px-7 sm:py-6"
       :class="speaking ? 'border-gold-dim/70' : 'border-divider'"
     >
       <ThinkingIndicator v-if="streaming && !message.display" />

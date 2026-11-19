@@ -14,7 +14,7 @@ const { online, canInstall, install } = usePwa()
     class="shrink-0 border-b border-divider/80 bg-ink/80 px-3 backdrop-blur-md sm:px-5"
     style="padding-top: env(safe-area-inset-top)"
   >
-    <div class="mx-auto flex h-14 max-w-[1600px] items-center gap-2 sm:gap-3">
+    <div class="mx-auto flex h-14 max-w-[1600px] items-center gap-1.5 short:h-12 sm:gap-3">
       <AppLogo :size="34" />
       <div class="min-w-0 flex-1">
         <h1 class="font-display text-[17px] leading-none font-bold tracking-[0.08em] text-gold-bright sm:text-lg">

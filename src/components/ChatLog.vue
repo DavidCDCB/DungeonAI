@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArrowDown } from '@lucide/vue'
 import { useGame } from '../composables/useGame'
 import DmMessage from './DmMessage.vue'
@@ -56,11 +56,35 @@ function jumpToBottom() {
   })
 }
 
+let atBottom = true
+let lastHeight = 0
+let resizeObserver: ResizeObserver | null = null
+
 function updateJump() {
   const scroller = container.value
   if (!scroller) return
-  showJump.value = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > 320
+  const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+  showJump.value = distance > 320
+  atBottom = distance < 80
 }
+
+/**
+ * Cuando el área del chat se encoge (se abre el teclado del móvil o aparece el
+ * banner de tirada) y el jugador estaba al final, lo mantiene al final.
+ */
+onMounted(() => {
+  const scroller = container.value
+  if (!scroller || typeof ResizeObserver === 'undefined') return
+  lastHeight = scroller.clientHeight
+  resizeObserver = new ResizeObserver(() => {
+    const height = scroller.clientHeight
+    if (height < lastHeight && atBottom) scroller.scrollTop = scroller.scrollHeight
+    lastHeight = height
+  })
+  resizeObserver.observe(scroller)
+})
+
+onBeforeUnmount(() => resizeObserver?.disconnect())
 
 /** El jugador tomó el control del scroll: deja de seguir al DM. */
 function stopFollowing() {
@@ -159,7 +183,7 @@ defineExpose({ container })
       @touchmove.passive="stopFollowing"
       @keydown="onKeydown"
     >
-      <div class="mx-auto w-full max-w-3xl px-4 pt-6 pb-10 sm:px-6 sm:pt-8">
+      <div class="mx-auto w-full max-w-3xl px-3 pt-4 pb-8 sm:px-6 sm:pt-8 sm:pb-10">
         <EmptyState v-if="!displayMessages.length" />
         <template v-else>
           <div v-if="hiddenCount" class="mb-8 flex justify-center">
@@ -167,7 +191,7 @@ defineExpose({ container })
               Mostrar {{ Math.min(PAGE, hiddenCount) }} mensajes anteriores ({{ hiddenCount }} ocultos)
             </button>
           </div>
-          <div class="space-y-7">
+          <div class="space-y-6 sm:space-y-7">
             <template v-for="message in rendered" :key="message.id">
               <DmMessage
                 v-if="message.role === 'assistant'"
@@ -192,7 +216,7 @@ defineExpose({ container })
       <button
         v-if="showJump"
         type="button"
-        class="absolute bottom-4 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-gold-dim/60 bg-surface-higher/95 px-3.5 py-2 text-xs text-gold-bright shadow-xl backdrop-blur hover:border-gold"
+        class="absolute bottom-4 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-gold-dim/60 bg-surface-higher/95 px-3.5 py-2 text-xs pointer-coarse:px-4 pointer-coarse:py-3 text-gold-bright shadow-xl backdrop-blur hover:border-gold"
         @click="jumpToBottom"
       >
         <ArrowDown class="h-3.5 w-3.5" />

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, watchEffect } from 'vue'
+import { computed, onBeforeUnmount, onMounted, watchEffect } from 'vue'
 import { useGame } from './composables/useGame'
 import { useConfirm } from './composables/useConfirm'
 import { useDialogStack } from './composables/useDialogStack'
 import { usePwa } from './composables/usePwa'
 import { useToasts } from './composables/useToasts'
+import { useWakeLock } from './composables/useWakeLock'
 import AppHeader from './components/AppHeader.vue'
 import AppDialog from './components/AppDialog.vue'
 import ChatLog from './components/ChatLog.vue'
@@ -30,7 +31,18 @@ const {
   openDice,
   focusComposer,
   exportProgress,
+  speakingId,
 } = useGame()
+
+// Pantalla encendida mientras el DM piensa, escribe o lee en voz alta.
+useWakeLock(computed(() => loading.value || speakingId.value !== null))
+
+/** Evita perder un turno en curso al recargar o cerrar la pestaña por accidente. */
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  if (!loading.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
 const { ask } = useConfirm()
 const { depth } = useDialogStack()
 const { push } = useToasts()
@@ -85,11 +97,13 @@ function onKeydown(event: KeyboardEvent) {
 onMounted(() => {
   init()
   pwa.start()
+  window.addEventListener('beforeunload', onBeforeUnload)
   window.addEventListener('keydown', onKeydown)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('beforeunload', onBeforeUnload)
 })
 </script>
 

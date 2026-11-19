@@ -114,3 +114,11 @@ describe('Opciones de exportación', () => {
     expect(restored.settings.stream).toBe(false)
   })
 })
+
+describe('Velocidad del turno', () => {
+  it('conserva tokens por segundo y duración al exportar', () => {
+    const fast = { ...usage, tokensPerSecond: 48.3, durationMs: 12_400 }
+    const file = serializeProgress(settings, messages, '', fast, dice)
+    expect(parseProgressJson(JSON.stringify(file)).usage).toEqual(fast)
+  })
+})

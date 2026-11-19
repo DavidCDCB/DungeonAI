@@ -1,18 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { useGame } from '../composables/useGame'
-import { formatElapsed, formatTokens } from '../lib/format'
+import { formatElapsed, formatNumber, formatRate } from '../lib/format'
 
-const { phase, turnStartedAt, reasoningChars, settings, cancelTurn } = useGame()
-const now = ref(Date.now())
-let timer: ReturnType<typeof setInterval> | null = null
-
-onMounted(() => {
-  timer = setInterval(() => (now.value = Date.now()), 1000)
-})
-onBeforeUnmount(() => {
-  if (timer) clearInterval(timer)
-})
+const { phase, turnStartedAt, now, liveStats, settings, cancelTurn } = useGame()
 
 const elapsed = computed(() => formatElapsed(now.value - turnStartedAt.value))
 const label = computed(() => {
@@ -21,9 +12,7 @@ const label = computed(() => {
   if (phase.value === 'writing') return 'El Dungeon Master escribe'
   return 'El Dungeon Master consulta sus notas'
 })
-const thoughts = computed(() =>
-  reasoningChars.value > 0 ? `~${formatTokens(Math.ceil(reasoningChars.value / 3.5))} tokens de razonamiento` : '',
-)
+const thinking = computed(() => liveStats.value.reasoningTokens > 0)
 const slow = computed(() => now.value - turnStartedAt.value > 45_000)
 </script>
 
@@ -35,10 +24,28 @@ const slow = computed(() => now.value - turnStartedAt.value > 45_000)
     </div>
     <div class="min-w-0 flex-1">
       <p class="shimmer-text text-[15px] font-medium">{{ label }}…</p>
-      <p class="mt-0.5 text-xs text-faint tabular-nums">
-        {{ elapsed }}
-        <template v-if="thoughts"> · {{ thoughts }}</template>
-        <template v-if="slow && settings.reasoning === 'max'"> · el razonamiento max puede tardar minutos</template>
+      <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-faint tabular-nums">
+        <span>{{ elapsed }}</span>
+        <template v-if="thinking">
+          <span aria-hidden="true">·</span>
+          <span>
+            Razonamiento:
+            <strong class="font-semibold text-parchment">~{{ formatNumber(liveStats.reasoningTokens) }}</strong>
+            tokens
+          </span>
+          <span aria-hidden="true">·</span>
+          <span
+            class="rounded-md border border-divider bg-ink-soft px-1.5 py-0.5 font-mono text-[11px] text-gold-bright"
+            title="Tokens de razonamiento por segundo (estimado)"
+          >
+            {{ liveStats.reasoningRate ? formatRate(liveStats.reasoningRate) : '— tok/s' }}
+          </span>
+        </template>
+        <span v-else-if="phase === 'waiting'">· esperando el primer token</span>
+        <template v-if="slow && settings.reasoning === 'max'">
+          <span aria-hidden="true">·</span>
+          <span>el razonamiento max puede tardar minutos</span>
+        </template>
       </p>
     </div>
     <button type="button" class="btn-ghost btn-sm" @click="cancelTurn">Detener</button>

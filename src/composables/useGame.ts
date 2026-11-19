@@ -30,6 +30,7 @@ import { isContextError } from '../lib/sse'
 import { downloadProgress, parseProgressFile, serializeProgress } from '../lib/transfer'
 import { chunkForSpeech, cleanForSpeech } from '../lib/ttsText'
 import { formatTokens } from '../lib/format'
+import { charsToTokens } from '../lib/contextBudget'
 import {
   clearDiceGroups,
   clearGameStorage,
@@ -63,6 +64,11 @@ const turnStartedAt = ref(0)
 const pendingId = ref<string | null>(null)
 const streamText = ref('')
 const reasoningChars = ref(0)
+/** Reloj del turno (cada 250 ms) y marcas de tiempo para medir la velocidad. */
+const now = ref(Date.now())
+const reasoningStartedAt = ref(0)
+const reasoningEndedAt = ref(0)
+const contentStartedAt = ref(0)
 const draft = ref(loadDraft())
 const errorMessage = ref('')
 const errorKind = ref<'error' | 'cancelled'>('error')
@@ -93,6 +99,7 @@ const ttsError = ref('')
 let abortController: AbortController | null = null
 let speechToken = 0
 let initialized = false
+let clock: ReturnType<typeof setInterval> | null = null
 let draftTimer: ReturnType<typeof setTimeout> | null = null
 let pendingProgress: StreamProgress | null = null
 let progressFrame = 0
@@ -140,6 +147,33 @@ const streamingMessage = computed<ChatMessage | null>(() => {
 const displayMessages = computed(() =>
   streamingMessage.value ? [...messages.value, streamingMessage.value] : messages.value,
 )
+
+export interface LiveStats {
+  reasoningTokens: number
+  contentTokens: number
+  /** tok/s del razonamiento (se congela cuando empieza el texto). */
+  reasoningRate: number | null
+  /** tok/s del texto visible. */
+  contentRate: number | null
+}
+
+function rate(tokens: number, start: number, end: number): number | null {
+  if (!start || tokens <= 0) return null
+  const seconds = (end - start) / 1000
+  return seconds >= 0.5 ? tokens / seconds : null
+}
+
+/** Conteo y velocidad estimados mientras llegan los tokens. */
+const liveStats = computed<LiveStats>(() => {
+  const reasoningTokens = charsToTokens(reasoningChars.value)
+  const contentTokens = charsToTokens(streamText.value.length)
+  return {
+    reasoningTokens,
+    contentTokens,
+    reasoningRate: rate(reasoningTokens, reasoningStartedAt.value, reasoningEndedAt.value || now.value),
+    contentRate: rate(contentTokens, contentStartedAt.value, now.value),
+  }
+})
 
 const contextTokens = computed(() => usage.value?.total ?? 0)
 const reasoningTokens = computed(() => usage.value?.reasoning ?? 0)
@@ -258,6 +292,18 @@ function applyProgress() {
   if (!pendingProgress || !loading.value) return
   const progress = pendingProgress
   pendingProgress = null
+  const stamp = Date.now()
+  if (!progress.content && !progress.reasoningChars) {
+    // Nuevo intento tras un reintento automático: la medición empieza de cero.
+    reasoningStartedAt.value = 0
+    reasoningEndedAt.value = 0
+    contentStartedAt.value = 0
+  }
+  if (progress.reasoningChars > 0 && !reasoningStartedAt.value) reasoningStartedAt.value = stamp
+  if (progress.content && !contentStartedAt.value) {
+    contentStartedAt.value = stamp
+    if (reasoningStartedAt.value) reasoningEndedAt.value = stamp
+  }
   streamText.value = progress.content
   reasoningChars.value = progress.reasoningChars
   if (phase.value !== 'repairing') {
@@ -305,6 +351,12 @@ async function generateResponse(): Promise<boolean> {
   pendingProgress = null
   phase.value = 'waiting'
   turnStartedAt.value = Date.now()
+  reasoningStartedAt.value = 0
+  reasoningEndedAt.value = 0
+  contentStartedAt.value = 0
+  now.value = Date.now()
+  if (clock) clearInterval(clock)
+  clock = setInterval(() => (now.value = Date.now()), 250)
   errorMessage.value = ''
   loading.value = true
 
@@ -317,6 +369,11 @@ async function generateResponse(): Promise<boolean> {
       onProgress,
     })
     applyProgress()
+    const finishedAt = Date.now()
+    const firstTokenAt = reasoningStartedAt.value || contentStartedAt.value
+    const speed = result.streamed && firstTokenAt ? rate(result.usage.completion, firstTokenAt, finishedAt) : null
+    const turnUsage: TokenUsage = { ...result.usage, durationMs: finishedAt - turnStartedAt.value }
+    if (speed) turnUsage.tokensPerSecond = speed
     if (result.contextWindow) {
       settings.contextWindow = result.contextWindow
       persistSettings()
@@ -345,7 +402,7 @@ async function generateResponse(): Promise<boolean> {
     assistant = { ...assistant, memory }
     messages.value = [...messages.value, assistant]
     gameState.value = memory
-    usage.value = result.usage
+    usage.value = turnUsage
     persistGame()
     if (!result.streamed) requestScroll(assistant.id)
     announce(
@@ -368,6 +425,8 @@ async function generateResponse(): Promise<boolean> {
     if (progressFrame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(progressFrame)
     progressFrame = 0
     pendingProgress = null
+    if (clock) clearInterval(clock)
+    clock = null
     loading.value = false
     phase.value = 'idle'
     pendingId.value = null
@@ -539,10 +598,27 @@ function closeDice() {
  * Lanza y envía al DM en el mismo paso: el resultado queda comprometido aunque
  * se cierre el diálogo durante la animación.
  */
+/** Vibración breve en el móvil al lanzar (más marcada con un crítico o una pifia). */
+function vibrateFor(rolls: DiceRoll[]) {
+  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+  const pattern = rolls.some((roll) => roll.natural === 20)
+    ? [40, 60, 40, 60, 140]
+    : rolls.some((roll) => roll.natural === 1)
+      ? [220]
+      : [25, 45, 25]
+  try {
+    navigator.vibrate(pattern)
+  } catch {
+    // Algunos navegadores bloquean la vibración: no es esencial.
+  }
+}
+
 function rollAndSend(requests: DiceRequest[]): DiceRoll[] {
   if (!requests.length || loading.value) return []
   if (!ensureConfigured()) return []
   const rolls = requests.map((request) => rollRequest(request))
+  vibrateFor(rolls)
   diceResults.value = rolls
   diceOpen.value = true
   clearDiceGroups()
@@ -748,6 +824,8 @@ export function useGame() {
     pendingId,
     streamText,
     reasoningChars,
+    liveStats,
+    now,
     draft,
     errorMessage,
     errorKind,

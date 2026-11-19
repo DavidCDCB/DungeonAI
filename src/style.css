@@ -80,10 +80,45 @@
   --reading-weight: 400;
 }
 
+/* Móviles: líneas de ~45 caracteres en lugar de ~38. */
+@media (max-width: 480px) {
+  :root,
+  :root[data-text="md"] {
+    --reading-size: 16px;
+    --reading-leading: 1.72;
+  }
+
+  :root[data-text="sm"] {
+    --reading-size: 15px;
+  }
+
+  :root[data-text="lg"] {
+    --reading-size: 18px;
+  }
+}
+
+/* Teléfono en horizontal: poca altura. */
+@custom-variant short (@media (max-height: 520px));
+
 html,
 body,
 #app {
   height: 100%;
+}
+
+html {
+  /* Evita «tirar para recargar» en Chrome Android a mitad de un turno. */
+  overscroll-behavior-y: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+button,
+summary,
+label,
+[role="tab"],
+[role="menuitem"] {
+  touch-action: manipulation;
 }
 
 body {
@@ -122,9 +157,12 @@ body {
   color: #fff;
 }
 
-:focus-visible {
-  outline: 2px solid var(--color-gold);
-  outline-offset: 2px;
+/* En una capa para que las utilidades (p. ej. outline-none) puedan anularlo. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-gold);
+    outline-offset: 2px;
+  }
 }
 
 @layer components {
@@ -198,6 +236,39 @@ body {
 
   .seg-item {
     @apply rounded-lg px-3 py-1.5 text-xs font-medium text-muted transition hover:text-parchment aria-pressed:bg-surface-higher aria-pressed:text-gold-bright aria-pressed:shadow-[inset_0_0_0_1px_rgb(138_110_60/0.6)];
+  }
+
+  /* Pantallas táctiles: objetivos de al menos 40–44 px y campos de 16 px. */
+  @media (pointer: coarse) {
+    .icon-btn {
+      width: 44px;
+      height: 44px;
+    }
+
+    .icon-btn-sm {
+      width: 40px;
+      height: 40px;
+    }
+
+    .seg-item {
+      padding-block: 0.75rem;
+    }
+
+    .btn,
+    .btn-primary,
+    .btn-secondary,
+    .btn-ghost,
+    .btn-danger {
+      min-height: 44px;
+    }
+
+    .field {
+      font-size: 16px;
+    }
+
+    .btn-sm {
+      min-height: 40px;
+    }
   }
 
   .dm-markdown {

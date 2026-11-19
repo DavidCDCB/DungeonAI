@@ -47,6 +47,10 @@ export interface TokenUsage {
   reasoning: number
   estimated: boolean
   sentMessages: number
+  /** Tokens de salida por segundo desde el primer token recibido (solo con streaming). */
+  tokensPerSecond?: number
+  /** Duración total del turno, en ms. */
+  durationMs?: number
 }
 
 export type DiceMode = 'normal' | 'advantage' | 'disadvantage' | 'drop-lowest'

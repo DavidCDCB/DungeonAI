@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Activity, Brain, Coins, Database, MessageSquare } from '@lucide/vue'
+import { Activity, Brain, Coins, Database, Gauge, MessageSquare } from '@lucide/vue'
 import { useGame } from '../composables/useGame'
 import { estimateTokens } from '../lib/contextBudget'
-import { formatNumber, formatTokens } from '../lib/format'
+import { formatElapsed, formatNumber, formatRate, formatTokens } from '../lib/format'
 import AppDialog from './AppDialog.vue'
 
 const { contextOpen, usage, messages, gameState, settings } = useGame()
@@ -77,6 +77,15 @@ const rows = computed(() => [
           <dt class="text-muted">Memoria de la partida:</dt>
           <dd class="font-mono text-parchment">~{{ formatNumber(memoryTokens) }} tokens</dd>
         </div>
+        <div v-if="usage?.tokensPerSecond || usage?.durationMs" class="flex items-center gap-2">
+          <Gauge class="h-4 w-4 text-gold-dim" />
+          <dt class="text-muted">Velocidad:</dt>
+          <dd class="font-mono text-parchment">
+            <template v-if="usage?.tokensPerSecond">{{ formatRate(usage.tokensPerSecond) }}</template>
+            <template v-if="usage?.tokensPerSecond && usage?.durationMs"> · </template>
+            <template v-if="usage?.durationMs">turno de {{ formatElapsed(usage.durationMs) }}</template>
+          </dd>
+        </div>
         <div class="flex items-center gap-2">
           <Coins class="h-4 w-4 text-gold-dim" />
           <dt class="text-muted">Modelo:</dt>
@@ -85,7 +94,8 @@ const rows = computed(() => [
       </dl>
 
       <p class="text-xs leading-5 text-faint">
-        El razonamiento está incluido en la salida del turno y no se reenvía en el siguiente prompt. El
+        El razonamiento está incluido en la salida del turno y no se reenvía en el siguiente prompt. La
+        velocidad cuenta los tokens de salida (razonamiento incluido) desde el primer token recibido. El
         contador muestra tokens, no un porcentaje de la ventana.
       </p>
     </div>

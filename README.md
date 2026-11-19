@@ -51,6 +51,17 @@ Abre `http://localhost:5173`. La primera vez se abre **Ajustes → Conexión** p
 - Autoguardado en `localStorage`, con aviso si el almacenamiento se llena y medidor de uso en *Ajustes → Datos*.
 - **Exportar/Importar** la partida en JSON. Por defecto **sin la API key**; al importar un archivo sin key se conserva la de este navegador.
 
+### Móvil (probado con el viewport del POCO X7 Pro, 407×904)
+- El teclado encoge la app (`interactive-widget=resizes-content`): el compositor queda sobre el teclado y el chat sigue anclado al final.
+- Compositor en una sola fila (dados · comandos · texto · enviar); la línea de tokens se oculta mientras escribes.
+- Funciona con Gboard: el botón Enviar se activa aunque la palabra siga «en composición».
+- Objetivos táctiles de 40–44 px y acciones de los mensajes siempre visibles en pantallas táctiles (también en horizontal).
+- El gesto **atrás** de Android cierra el diálogo abierto en lugar de salir de la app.
+- Pantalla encendida mientras el DM piensa, escribe o lee en voz alta (Screen Wake Lock), y vibración al lanzar dados (más marcada con críticos y pifias).
+- Sin «tirar para recargar»; aviso antes de recargar con un turno en curso.
+- Lectura a 16 px en pantallas estrechas; cabecera y compositor compactos en horizontal.
+- El manifest incluye capturas para el diálogo de instalación enriquecido de Chrome.
+
 ### Accesibilidad
 - Diálogos con foco atrapado, `Esc` y restauración del foco; región `aria-live` para avisar de respuestas nuevas; enlace «saltar al compositor»; respeta `prefers-reduced-motion`.
 - Atajos: `1`–`5` opciones · `D` dados · `/` escribir · `Esc` cerrar.

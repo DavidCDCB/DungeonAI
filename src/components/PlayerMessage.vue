@@ -60,7 +60,7 @@ async function copy() {
 
     <div
       v-if="!isStart"
-      class="mt-1 flex items-center gap-0.5 transition-opacity sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
+      class="mt-1 flex items-center gap-0.5 transition-opacity pointer-fine:opacity-0 pointer-fine:group-focus-within:opacity-100 pointer-fine:group-hover:opacity-100"
     >
       <button
         v-if="!rolls"

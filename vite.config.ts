@@ -70,9 +70,27 @@ export default defineConfig({
           { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
           { src: 'maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
+        // Chrome en Android muestra un diálogo de instalación enriquecido con estas capturas.
+        screenshots: [
+          {
+            src: 'screenshots/mobile-partida.jpg',
+            sizes: '814x1808',
+            type: 'image/jpeg',
+            form_factor: 'narrow',
+            label: 'Narración del Dungeon Master con cinco opciones de acción',
+          },
+          {
+            src: 'screenshots/desktop-partida.jpg',
+            sizes: '1280x720',
+            type: 'image/jpeg',
+            form_factor: 'wide',
+            label: 'Partida en escritorio con el panel de personaje y memoria',
+          },
+        ],
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        globIgnores: ['**/screenshots/**'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,

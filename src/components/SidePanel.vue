@@ -9,6 +9,7 @@ import {
   Eye,
   EyeOff,
   Flag,
+  Globe,
   HeartPulse,
   MapPin,
   NotebookPen,
@@ -22,6 +23,7 @@ import {
 import { useGame } from '../composables/useGame'
 import { isActiveCombat, memoryEntries } from '../lib/gameState'
 import { providerFor } from '../lib/providers'
+import { loreTokens } from '../lib/lore'
 import { formatNumber, formatRate, formatTokens } from '../lib/format'
 
 const {
@@ -66,6 +68,7 @@ const voiceLabel = computed(() => {
 })
 
 const providerLabel = computed(() => providerFor(settings.baseUrl).label)
+const worldTokens = computed(() => loreTokens(settings.lore))
 </script>
 
 <template>
@@ -87,15 +90,31 @@ const providerLabel = computed(() => providerFor(settings.baseUrl).label)
           <dt class="text-faint">Tema</dt>
           <dd class="text-right text-parchment">{{ settings.theme }}</dd>
         </div>
+        <div class="flex justify-between gap-3">
+          <dt class="text-faint">Contexto</dt>
+          <dd class="text-right" :class="settings.lore.trim() ? 'text-gold-bright' : 'text-faint'">
+            {{ settings.lore.trim() ? `Lore activo · ~${formatNumber(worldTokens)} tokens` : 'Sin definir' }}
+          </dd>
+        </div>
       </dl>
-      <button
-        type="button"
-        class="flex w-full items-center gap-2 border-t border-divider px-4 py-2.5 text-xs text-muted transition hover:bg-white/[0.03] hover:text-gold-bright"
-        @click="openSettings('campaign')"
-      >
-        <Pencil class="h-3.5 w-3.5" />
-        Editar campaña
-      </button>
+      <div class="grid grid-cols-2 divide-x divide-divider border-t border-divider">
+        <button
+          type="button"
+          class="flex items-center justify-center gap-2 px-3 py-2.5 text-xs text-muted transition hover:bg-white/[0.03] hover:text-gold-bright pointer-coarse:py-3"
+          @click="openSettings('campaign')"
+        >
+          <Pencil class="h-3.5 w-3.5" />
+          Campaña
+        </button>
+        <button
+          type="button"
+          class="flex items-center justify-center gap-2 px-3 py-2.5 text-xs text-muted transition hover:bg-white/[0.03] hover:text-gold-bright pointer-coarse:py-3"
+          @click="openSettings('world')"
+        >
+          <Globe class="h-3.5 w-3.5" />
+          Mundo
+        </button>
+      </div>
     </section>
 
     <section v-if="combat" class="card border-error/40 bg-error/[0.06] p-4">

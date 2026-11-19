@@ -116,6 +116,13 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 - La sección **Trama (solo DM)** está oculta por defecto (spoilers); se puede mostrar en *Lectura y voz*.
 - Editor de memoria dedicado. Cada turno guarda una instantánea de la memoria, lo que permite deshacer y regenerar sin corromperla.
 
+### Contexto del mundo (lore)
+- Pestaña **Ajustes → Mundo**: un editor donde escribes lo que el DM debe saber del mundo (cronología, lugares, facciones, PNJs, reglas, vocabulario). Se añade al prompt como **canon**, después de las reglas del DM y antes de la memoria, para que una franquicia de videojuegos, películas o series se narre fiel al original.
+- **Generar con el modelo:** a partir del campo *Mundo* y el *Tema*, el modelo redacta un dossier con encabezados fijos. Respeta y completa tus notas si ya escribiste algo, se puede detener y, si falla o no conoce el mundo, se restaura el texto anterior. Puede equivocarse: revísalo.
+- **Plantilla** con los encabezados recomendados, **Importar texto** (`.txt`/`.md`, p. ej. un resumen de una wiki) y **Vaciar**.
+- Límite de 80 000 caracteres. El editor muestra los tokens que añade a cada turno y avisa si superan el 25 % de la ventana de contexto. También aparece en el panel de la partida y en el desglose de tokens.
+- El prompt trata el lore como material de consulta: ignora instrucciones de formato que contenga, no lo cita y no revela secretos antes de tiempo. Viaja en la exportación de la partida.
+
 ### Lectura y voz
 
 - Tamaño de texto (pequeño/normal/grande) y letra de narración (Literata «libro» o Inter «moderna»). Letra capital en cada escena.
@@ -204,7 +211,7 @@ src/
 │  ├─ Composer.vue            entrada, banner de tirada, comandos, estado
 │  ├─ DiceModal.vue · DiceRollCard.vue
 │  ├─ SidePanel.vue · MemoryDialog.vue · ContextModal.vue
-│  ├─ SettingsDrawer.vue      pestañas Conexión / Campaña / Lectura y voz / Datos
+│  ├─ SettingsDrawer.vue      pestañas Conexión / Campaña / Mundo / Prompt / Lectura y voz / Datos
 │  └─ ConfirmHost.vue · ToastHost.vue · EmptyState.vue
 ├─ composables/
 │  ├─ useGame.ts              estado de la partida, turnos, dados, voz
@@ -215,6 +222,7 @@ src/
 │  ├─ dice.ts                 tiradas, modos, sugerencias y lectura de resultados
 │  ├─ gameState.ts            memoria [ESTADO], secciones e instantáneas
 │  ├─ messages.ts · options.ts · markdown.ts · ttsText.ts
+│  ├─ lore.ts                 contexto del mundo: bloque del prompt, plantilla, generación
 │  ├─ prompt.ts · commands.ts · providers.ts · contextBudget.ts
 │  └─ storage.ts · transfer.ts · format.ts
 ├─ prompts/dungeon_master.md
@@ -230,7 +238,7 @@ vercel.json · pwa-assets.config.ts · .vercelignore
 - Orden de cada respuesta: narración → `[ESTADO]…[/ESTADO]` → cierre. Una petición de tirada (`[TIRADA]` con notación completa) va al final de la narración; si no hay tirada, van 5 opciones en primera persona y una con 🃏.
 - Cada sección de `[ESTADO]` reemplaza entera a la guardada. `Combate:` se omite al terminar el combate, y `Trama (solo DM)` es secreta.
 - Documenta el formato exacto de los mensajes del lanzador de dados y avisa al modelo de que su historial le llega sin `[ESTADO]` ni opciones (para que no imite el recorte).
-- Se interpolan `{{tema}}`, `{{mundo}}`, `{{personaje}}`/`{{nombre}}`, `{{clase}}` y `{{raza}}`. La app añade la memoria vigente y un recordatorio de cierre (`src/lib/prompt.ts`).
+- Se interpolan `{{tema}}`, `{{mundo}}`, `{{personaje}}`/`{{nombre}}`, `{{clase}}` y `{{raza}}`. La app añade el contexto del mundo (si lo hay), la memoria vigente y un recordatorio de cierre (`src/lib/prompt.ts`).
 
 `tests/prompt.test.ts` comprueba que el prompt y el parser encajan: la plantilla `[ESTADO]` produce todas las secciones, los ejemplos de dados coinciden con lo que genera el lanzador, los ejemplos de petición producen botones y los comandos del menú están documentados.
 
@@ -241,7 +249,7 @@ vercel.json · pwa-assets.config.ts · .vercelignore
   "app": "dungeon-ai-web",
   "version": 1,
   "exportedAt": "2026-01-01T00:00:00.000Z",
-  "settings": { "apiKey": "", "baseUrl": "…", "model": "…", "stream": true, "contextWindow": 1000000, "customPrompt": "" },
+  "settings": { "apiKey": "", "baseUrl": "…", "model": "…", "stream": true, "contextWindow": 1000000, "customPrompt": "", "lore": "…" },
   "messages": [{ "role": "assistant", "content": "…", "memory": "Escena: …" }],
   "state": "Escena: …",
   "usage": { "prompt": 0, "completion": 0, "total": 0 },
@@ -249,7 +257,7 @@ vercel.json · pwa-assets.config.ts · .vercelignore
 }
 ```
 
-Los archivos de versiones anteriores siguen siendo compatibles (`memory` y `mode` son opcionales).
+Los archivos de versiones anteriores siguen siendo compatibles (`memory`, `mode` y `lore` son opcionales).
 
 ### Desplegar en Vercel
 

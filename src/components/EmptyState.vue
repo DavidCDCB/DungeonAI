@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { Pencil, Upload } from '@lucide/vue'
+import { computed } from 'vue'
+import { Globe, Pencil, Upload } from '@lucide/vue'
 import { useGame } from '../composables/useGame'
 import AppLogo from './AppLogo.vue'
 
 const { settings, configured, startAdventure, openSettings } = useGame()
+const hasLore = computed(() => Boolean(settings.lore.trim()))
 </script>
 
 <template>
@@ -38,14 +40,25 @@ const { settings, configured, startAdventure, openSettings } = useGame()
           <p class="mt-0.5 truncate text-sm text-parchment">{{ settings.theme }}</p>
         </div>
       </div>
-      <button
-        type="button"
-        class="flex w-full items-center justify-center gap-2 border-t border-divider px-4 py-2.5 text-xs text-muted transition hover:bg-white/[0.03] hover:text-gold-bright"
-        @click="openSettings('campaign')"
-      >
-        <Pencil class="h-3.5 w-3.5" />
-        Personalizar campaña
-      </button>
+      <div class="grid grid-cols-2 divide-x divide-divider border-t border-divider">
+        <button
+          type="button"
+          class="flex items-center justify-center gap-2 px-3 py-2.5 text-xs text-muted transition hover:bg-white/[0.03] hover:text-gold-bright pointer-coarse:py-3"
+          @click="openSettings('campaign')"
+        >
+          <Pencil class="h-3.5 w-3.5" />
+          Personalizar campaña
+        </button>
+        <button
+          type="button"
+          class="flex items-center justify-center gap-2 px-3 py-2.5 text-xs transition hover:bg-white/[0.03] hover:text-gold-bright pointer-coarse:py-3"
+          :class="hasLore ? 'text-gold' : 'text-muted'"
+          @click="openSettings('world')"
+        >
+          <Globe class="h-3.5 w-3.5" />
+          {{ hasLore ? 'Lore del mundo ✓' : 'Añadir lore del mundo' }}
+        </button>
+      </div>
     </div>
 
     <div class="mt-7 flex flex-wrap items-center justify-center gap-3">

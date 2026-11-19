@@ -49,7 +49,7 @@ import {
 } from '../lib/storage'
 import { useToasts } from './useToasts'
 
-export type SettingsTab = 'connection' | 'campaign' | 'prompt' | 'reading' | 'data'
+export type SettingsTab = 'connection' | 'campaign' | 'world' | 'prompt' | 'reading' | 'data'
 
 const { push: toast } = useToasts()
 

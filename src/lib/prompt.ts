@@ -1,5 +1,6 @@
 import promptBase from '../prompts/dungeon_master.md?raw'
 import type { Settings } from '../types'
+import { loreBlock } from './lore'
 
 export const RECORDATORIO_CIERRE = `=====================
 CIERRE OBLIGATORIO (VERIFICA ANTES DE RESPONDER)
@@ -34,6 +35,9 @@ export function buildSystemPrompt(settings: Settings, gameState: string): string
   prompt = replaceAllLiteral(prompt, '{{raza}}', settings.race)
 
   let result = prompt.trimEnd()
+  // El lore va antes de la memoria: así el prefijo estable del prompt se puede cachear.
+  const lore = loreBlock(settings.lore ?? '')
+  if (lore) result += `\n\n${lore}`
   if (gameState.trim()) {
     result +=
       '\n\n=====================\n' +

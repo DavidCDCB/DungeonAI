@@ -9,6 +9,7 @@ import type {
 } from '../types'
 import { DEFAULT_SETTINGS, REASONING_LEVELS } from '../types'
 import { normalizeDiceGroups } from './dice'
+import { normalizeLore } from './lore'
 
 export const PROGRESS_APP = 'dungeon-ai-web'
 export const PROGRESS_VERSION = 1
@@ -187,6 +188,7 @@ export function normalizeSettings(value: any): Settings {
       ? raw.readingFont
       : DEFAULT_SETTINGS.readingFont,
     showSecrets: bool('showSecrets', DEFAULT_SETTINGS.showSecrets),
+    lore: normalizeLore(text('lore', '')),
   }
 }
 

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Activity, Brain, Coins, Database, Gauge, MessageSquare } from '@lucide/vue'
+import { Activity, Brain, Coins, Database, Gauge, Globe, MessageSquare } from '@lucide/vue'
 import { useGame } from '../composables/useGame'
 import { estimateTokens } from '../lib/contextBudget'
+import { loreTokens } from '../lib/lore'
 import { formatElapsed, formatNumber, formatRate, formatTokens } from '../lib/format'
 import AppDialog from './AppDialog.vue'
 
@@ -10,6 +11,7 @@ const { contextOpen, usage, messages, gameState, settings } = useGame()
 
 const estimatedPrefix = computed(() => (usage.value?.estimated ? '~' : ''))
 const memoryTokens = computed(() => estimateTokens(gameState.value))
+const worldTokens = computed(() => loreTokens(settings.lore))
 const sent = computed(() => usage.value?.sentMessages ?? 0)
 const noUsage = computed(() => !usage.value || usage.value.total <= 0)
 
@@ -71,6 +73,11 @@ const rows = computed(() => [
           <MessageSquare class="h-4 w-4 text-gold-dim" />
           <dt class="text-muted">Historial enviado:</dt>
           <dd class="font-mono text-parchment">{{ sent }} de {{ messages.length }} mensajes</dd>
+        </div>
+        <div v-if="worldTokens" class="flex items-center gap-2">
+          <Globe class="h-4 w-4 text-gold-dim" />
+          <dt class="text-muted">Contexto del mundo:</dt>
+          <dd class="font-mono text-parchment">~{{ formatNumber(worldTokens) }} tokens por turno</dd>
         </div>
         <div class="flex items-center gap-2">
           <Database class="h-4 w-4 text-gold-dim" />

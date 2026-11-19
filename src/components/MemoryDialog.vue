@@ -50,7 +50,7 @@ function save() {
       v-model="text"
       rows="16"
       spellcheck="false"
-      class="field resize-y font-mono text-[12.5px] leading-5"
+      class="field resize-y font-mono text-[12.5px] leading-5 pointer-coarse:text-base"
       placeholder="Escena: ...&#10;Hoja: ...&#10;Inventario: ...&#10;Dinero: ..."
       data-autofocus
     />

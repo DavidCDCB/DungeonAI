@@ -7,6 +7,8 @@ import {
   Eye,
   EyeOff,
   FileText,
+  FileUp,
+  Globe,
   HardDrive,
   LoaderCircle,
   Plug,
@@ -16,17 +18,20 @@ import {
   SlidersHorizontal,
   Smartphone,
   Sparkles,
+  Square,
   Upload,
   Volume2,
+  WandSparkles,
   XCircle,
 } from '@lucide/vue'
 import type { Settings } from '../types'
 import { CONTEXT_WINDOWS, DEFAULT_SETTINGS, REASONING_LEVELS } from '../types'
 import { PROVIDERS, providerFor, requiresApiKey } from '../lib/providers'
-import { testConnection, type ConnectionTest } from '../lib/api'
+import { CancelledError, generateLore, testConnection, type ConnectionTest } from '../lib/api'
+import { LORE_TEMPLATE, LORE_WARN_RATIO, MAX_LORE_CHARS, loreTokens, normalizeLore } from '../lib/lore'
 import { promptBase } from '../lib/prompt'
 import { storageBytes } from '../lib/storage'
-import { formatBytes } from '../lib/format'
+import { formatBytes, formatNumber } from '../lib/format'
 import { useGame, type SettingsTab } from '../composables/useGame'
 import { useToasts } from '../composables/useToasts'
 import { useConfirm } from '../composables/useConfirm'
@@ -54,13 +59,39 @@ const { canInstall, installed, install } = usePwa()
 const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Plug }> = [
   { id: 'connection', label: 'Conexión', icon: Plug },
   { id: 'campaign', label: 'Campaña', icon: Sparkles },
+  { id: 'world', label: 'Mundo', icon: Globe },
   { id: 'prompt', label: 'Prompt', icon: ScrollText },
   { id: 'reading', label: 'Lectura y voz', icon: BookOpen },
   { id: 'data', label: 'Datos', icon: HardDrive },
 ]
 
 const THEMES = ['Alta Fantasía', 'Fantasía Oscura', 'Horror Gótico', 'Intriga Política', 'Aventura Pirata', 'Misterio', 'Comedia Heroica', 'Steampunk']
-const WORLDS = ['Faerûn (Reinos Olvidados)', 'Eberron', 'Greyhawk', 'Ravenloft', 'Dragonlance (Krynn)', 'Exandria', 'Mundo original']
+const WORLDS = [
+  'Faerûn (Reinos Olvidados)',
+  'Eberron',
+  'Greyhawk',
+  'Ravenloft',
+  'Dragonlance (Krynn)',
+  'Exandria',
+  'The Witcher (El Continente)',
+  'Skyrim (Tamriel)',
+  'Elden Ring (Las Tierras Intermedias)',
+  'El Señor de los Anillos (Tierra Media)',
+  'Juego de Tronos (Poniente)',
+  'Warhammer Fantasy',
+  'Star Wars',
+  'Mundo original',
+]
+const LORE_IDEAS = [
+  'Cronología y momento de la historia',
+  'Lugares y mapa',
+  'Facciones y poderes',
+  'PNJs con voz y motivaciones',
+  'Magia y reglas del mundo',
+  'Criaturas y amenazas',
+  'Términos propios del mundo',
+  'Lo que no debe cambiar',
+]
 const CLASSES = ['Bárbaro', 'Bardo', 'Brujo', 'Clérigo', 'Druida', 'Explorador', 'Guerrero', 'Hechicero', 'Mago', 'Monje', 'Paladín', 'Pícaro']
 const RACES = ['Humana', 'Elfa', 'Semielfa', 'Enana', 'Mediana', 'Gnoma', 'Tiflin', 'Dracónida', 'Semiorca']
 const PROMPT_MARKERS = ['{{tema}}', '{{mundo}}', '{{personaje}}', '{{nombre}}', '{{clase}}', '{{raza}}']
@@ -74,6 +105,9 @@ const testResult = ref<ConnectionTest | null>(null)
 const includeKey = ref(false)
 const importInput = ref<HTMLInputElement | null>(null)
 const usedBytes = ref(0)
+const loreFile = ref<HTMLInputElement | null>(null)
+const generating = ref(false)
+let loreAbort: AbortController | null = null
 
 const providerHint = computed(() => PROVIDERS.find((item) => item.id === providerId.value)?.hint ?? '')
 const keyRequired = computed(() => requiresApiKey(draft.baseUrl))
@@ -88,6 +122,9 @@ const dirty = computed(() =>
   (Object.keys(draft) as Array<keyof Settings>).some((key) => draft[key] !== settings[key]),
 )
 const customPromptActive = computed(() => Boolean(draft.customPrompt.trim()))
+const loreTokenCount = computed(() => loreTokens(draft.lore))
+const loreShare = computed(() => loreTokenCount.value / Math.max(draft.contextWindow, 1))
+const loreTooBig = computed(() => loreShare.value > LORE_WARN_RATIO)
 
 function syncProviderId() {
   providerId.value = providerFor(draft.baseUrl).id
@@ -105,6 +142,7 @@ watch(
   (open) => {
     if (!open) {
       stopSpeech()
+      loreAbort?.abort()
       return
     }
     Object.assign(draft, settings)
@@ -169,6 +207,93 @@ async function resetPrompt() {
     'Se vaciará el editor y se usará el prompt original de la app.',
   )
   if (ok) draft.customPrompt = ''
+}
+
+async function generateLoreText() {
+  normalizeDraft()
+  if (requiresApiKey(draft.baseUrl) && !draft.apiKey) {
+    push('Falta la API key para pedirle el contexto al modelo.', { tone: 'warning' })
+    settingsTab.value = 'connection'
+    return
+  }
+  const previous = draft.lore
+  const controller = new AbortController()
+  loreAbort = controller
+  generating.value = true
+  try {
+    const text = await generateLore(
+      { ...draft },
+      {
+        signal: controller.signal,
+        onProgress: (partial) => {
+          if (partial) draft.lore = partial.slice(0, MAX_LORE_CHARS)
+        },
+      },
+    )
+    draft.lore = text
+    push('Contexto generado. Revísalo y corrígelo antes de guardar.', { tone: 'success' })
+  } catch (loreError) {
+    draft.lore = previous
+    if (loreError instanceof CancelledError) {
+      push('Generación cancelada.', { tone: 'info' })
+    } else {
+      push((loreError as Error)?.message ?? 'No se pudo generar el contexto.', { tone: 'error' })
+    }
+  } finally {
+    generating.value = false
+    loreAbort = null
+  }
+}
+
+function stopLoreGeneration() {
+  loreAbort?.abort()
+}
+
+function appendLore(text: string) {
+  const joined = draft.lore.trim() ? `${draft.lore.trimEnd()}\n\n${text}` : text
+  draft.lore = joined.slice(0, MAX_LORE_CHARS)
+}
+
+function insertLoreTemplate() {
+  appendLore(LORE_TEMPLATE.trimEnd())
+}
+
+async function onLoreFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (file.size > 400_000) {
+    push('El archivo es demasiado grande (máximo ~400 KB de texto).', { tone: 'error' })
+    return
+  }
+  try {
+    const text = normalizeLore(await file.text())
+    if (!text) {
+      push('El archivo está vacío.', { tone: 'warning' })
+      return
+    }
+    const before = draft.lore.length
+    appendLore(text)
+    const truncated = draft.lore.length >= MAX_LORE_CHARS && before + text.length > MAX_LORE_CHARS
+    push(truncated ? 'Archivo añadido; se recortó al límite del contexto.' : 'Archivo añadido al contexto.', {
+      tone: truncated ? 'warning' : 'success',
+    })
+  } catch {
+    push('No se pudo leer el archivo.', { tone: 'error' })
+  }
+}
+
+async function clearLore() {
+  if (!draft.lore.trim()) return
+  const result = await ask({
+    title: '¿Vaciar el contexto del mundo?',
+    message: 'Se borrará el texto del editor. Podrás descartarlo cerrando los ajustes sin guardar.',
+    confirmLabel: 'Vaciar',
+    cancelLabel: 'Cancelar',
+    danger: true,
+  })
+  if (result === 'confirm') draft.lore = ''
 }
 
 function save() {
@@ -249,7 +374,7 @@ async function onInstall() {
   <AppDialog
     :open="settingsOpen"
     title="Ajustes"
-    description="Conexión con el modelo, campaña, prompt, lectura y datos"
+    description="Conexión con el modelo, campaña, mundo, prompt, lectura y datos"
     variant="drawer"
     @close="close"
   >
@@ -307,7 +432,7 @@ async function onInstall() {
         <span class="field-label">URL base</span>
         <input
           v-model="draft.baseUrl"
-          class="field font-mono text-[12.5px]"
+          class="field font-mono text-[12.5px] pointer-coarse:text-base"
           placeholder="https://api.openai.com/v1"
           spellcheck="false"
           autocomplete="off"
@@ -328,7 +453,7 @@ async function onInstall() {
           <input
             v-model="draft.apiKey"
             :type="showKey ? 'text' : 'password'"
-            class="field pr-11 font-mono text-[12.5px]"
+            class="field pr-11 font-mono text-[12.5px] pointer-coarse:text-base"
             placeholder="Pega la key del proveedor"
             autocomplete="off"
             spellcheck="false"
@@ -348,7 +473,7 @@ async function onInstall() {
 
       <label class="block">
         <span class="field-label">Modelo</span>
-        <input v-model="draft.model" class="field font-mono text-[12.5px]" placeholder="claude-haiku-5-5" spellcheck="false">
+        <input v-model="draft.model" class="field font-mono text-[12.5px] pointer-coarse:text-base" placeholder="claude-haiku-5-5" spellcheck="false">
       </label>
 
       <div>
@@ -458,6 +583,126 @@ async function onInstall() {
       </div>
     </section>
 
+    <!-- Mundo -->
+    <section
+      v-show="settingsTab === 'world'"
+      id="panel-world"
+      role="tabpanel"
+      aria-labelledby="tab-world"
+      class="space-y-5"
+    >
+      <div class="rounded-xl border border-divider bg-surface-high/60 px-3 py-2.5 text-xs leading-5 text-muted">
+        Escribe aquí lo que el Dungeon Master debe saber de tu mundo: historia, lugares, facciones,
+        personajes y reglas. Se añade al prompt como <strong class="text-parchment">canon</strong>, así
+        una franquicia de videojuegos, cine o series se narra fiel al original.
+        <strong class="text-parchment">Se aplica desde el próximo turno.</strong>
+      </div>
+
+      <label class="block">
+        <span class="field-label">Mundo o franquicia</span>
+        <input v-model="draft.world" list="worlds" class="field" placeholder="Faerûn (Reinos Olvidados)" :disabled="generating">
+        <p class="field-hint">Es el mismo campo de la pestaña Campaña. El modelo lo usa para generar el contexto.</p>
+      </label>
+
+      <div>
+        <div class="mb-1.5 flex items-center justify-between gap-2">
+          <label for="lore-text" class="field-label !mb-0">Contexto del mundo</label>
+          <span
+            class="rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+            :class="
+              draft.lore.trim()
+                ? 'border-gold-dim bg-gold/10 text-gold-bright'
+                : 'border-divider bg-surface-high text-muted'
+            "
+          >
+            {{ draft.lore.trim() ? 'Activo' : 'Vacío' }}
+          </span>
+        </div>
+        <textarea
+          id="lore-text"
+          v-model="draft.lore"
+          class="field min-h-[190px] resize-y sm:min-h-[300px] text-[13px] leading-6 pointer-coarse:text-base"
+          placeholder="Ej.: Estamos en el Continente poco después de la Tercera Guerra del Norte… (o pulsa «Generar con el modelo» o «Plantilla»)."
+          :maxlength="MAX_LORE_CHARS"
+          :readonly="generating"
+          :aria-busy="generating"
+          spellcheck="true"
+        />
+        <div class="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs tabular-nums text-faint">
+          <span>{{ formatNumber(draft.lore.length) }} / {{ formatNumber(MAX_LORE_CHARS) }} caracteres</span>
+          <span :class="loreTooBig ? 'text-warning' : ''">
+            ~{{ formatNumber(loreTokenCount) }} tokens por turno
+          </span>
+        </div>
+        <p v-if="loreTooBig" role="status" class="mt-1.5 text-xs leading-5 text-warning">
+          Ocupa más del {{ Math.round(LORE_WARN_RATIO * 100) }}% de la ventana de contexto: quedará menos
+          espacio para el historial. Resúmelo o sube la ventana en Conexión.
+        </p>
+        <p v-else class="field-hint">
+          Va en cada petición, antes de la memoria. Cuanto más breve y concreto, mejor y más barato.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          v-if="!generating"
+          type="button"
+          class="btn-primary btn-sm"
+          @click="generateLoreText"
+        >
+          <WandSparkles class="h-3.5 w-3.5" />
+          Generar con el modelo
+        </button>
+        <button v-else type="button" class="btn-secondary btn-sm" @click="stopLoreGeneration">
+          <Square class="h-3 w-3 fill-current" />
+          Detener
+        </button>
+        <button type="button" class="btn-secondary btn-sm" :disabled="generating" @click="insertLoreTemplate">
+          <FileText class="h-3.5 w-3.5" />
+          Plantilla
+        </button>
+        <button type="button" class="btn-secondary btn-sm" :disabled="generating" @click="loreFile?.click()">
+          <FileUp class="h-3.5 w-3.5" />
+          Importar texto
+        </button>
+        <button
+          type="button"
+          class="btn-ghost btn-sm"
+          :disabled="generating || !draft.lore"
+          @click="clearLore"
+        >
+          <RotateCcw class="h-3.5 w-3.5" />
+          Vaciar
+        </button>
+        <input
+          ref="loreFile"
+          type="file"
+          accept=".txt,.md,.markdown,text/plain,text/markdown"
+          class="hidden"
+          @change="onLoreFile"
+        >
+      </div>
+      <p class="field-hint !mt-2">
+        «Generar» le pide al modelo un resumen de la franquicia a partir del mundo y el tema; puede
+        equivocarse, así que revisa el resultado. Si ya escribiste notas, las respeta y las completa.
+      </p>
+
+      <div class="rounded-xl border border-divider bg-ink-soft px-3 py-2.5">
+        <p class="field-label">Qué conviene incluir</p>
+        <div class="flex flex-wrap gap-1.5">
+          <span
+            v-for="idea in LORE_IDEAS"
+            :key="idea"
+            class="rounded-md border border-divider bg-surface-high px-1.5 py-0.5 text-[11px] text-muted"
+          >{{ idea }}</span>
+        </div>
+        <p class="field-hint">
+          También puedes pegar texto de una wiki de la franquicia. No pongas instrucciones de formato:
+          el contexto es material de consulta y no cambia las reglas del DM.
+        </p>
+      </div>
+    </section>
+
     <!-- Prompt -->
     <section
       v-show="settingsTab === 'prompt'"
@@ -488,15 +733,15 @@ async function onInstall() {
         </div>
         <textarea
           v-model="draft.customPrompt"
-          class="field min-h-[320px] resize-y font-mono text-[12px] leading-5"
+          class="field min-h-[320px] resize-y font-mono text-[12px] leading-5 pointer-coarse:text-base"
           placeholder="Deja el campo vacío para usar el prompt original, o pulsa «Cargar prompt original» para editarlo."
           spellcheck="false"
           maxlength="100000"
           aria-label="Prompt personalizado del Dungeon Master"
         />
         <p class="field-hint">
-          El prompt personalizado reemplaza al original. La app añade siempre la memoria de la
-          partida y el recordatorio de cierre.
+          El prompt personalizado reemplaza al original. La app añade siempre el contexto del
+          mundo, la memoria de la partida y el recordatorio de cierre.
         </p>
       </div>
 

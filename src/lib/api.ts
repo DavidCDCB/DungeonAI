@@ -1,6 +1,7 @@
 import type { ChatMessage, Reasoning, Settings, TokenUsage } from '../types'
 import { estimateTokens, selectHistory } from './contextBudget'
-import { modelHistoryContent } from './messages'
+import { LORE_SYSTEM_PROMPT, cleanGeneratedLore, loreRequest } from './lore'
+import { createMessage, modelHistoryContent } from './messages'
 import { isOpenCodeBase, normalizeBaseUrl, requiresApiKey } from './providers'
 import { SseParser, contextLimitFromError, isContextError, readStreamChunk } from './sse'
 
@@ -399,6 +400,36 @@ export async function requestMissingOptions(
     { signal },
   )
   return result.content
+}
+
+/**
+ * Pide al modelo un dossier de contexto del mundo a partir del mundo y el tema.
+ * Reporta el texto parcial mientras llega (con streaming).
+ */
+export async function generateLore(
+  settings: Settings,
+  options: { signal?: AbortSignal; onProgress?: (text: string) => void } = {},
+): Promise<string> {
+  // Recordar datos de una obra no necesita un razonamiento largo.
+  const reasoning: Reasoning = ['low', 'medium'].includes(settings.reasoning) ? settings.reasoning : 'medium'
+  const result = await chatWithFallback(
+    { ...settings, reasoning },
+    LORE_SYSTEM_PROMPT,
+    [createMessage('user', loreRequest(settings))],
+    {
+      stream: settings.stream,
+      signal: options.signal,
+      onProgress: (progress) => options.onProgress?.(progress.content),
+    },
+  )
+  const { lore, unknown } = cleanGeneratedLore(result.content)
+  if (unknown) {
+    throw new ApiError(
+      'El modelo no conoce ese mundo. Pega aquí un resumen o escribe el contexto a mano.',
+    )
+  }
+  if (!lore) throw new ApiError('El modelo no devolvió texto.')
+  return lore
 }
 
 export interface ConnectionTest {

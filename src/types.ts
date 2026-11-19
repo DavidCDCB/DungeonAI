@@ -39,6 +39,8 @@ export interface Settings {
   readingFont: ReadingFont
   /** Muestra la sección "Trama (solo DM)" de la memoria. */
   showSecrets: boolean
+  /** Contexto del mundo (lore): base de conocimiento que se añade al prompt. */
+  lore: string
 }
 
 export interface TokenUsage {
@@ -104,6 +106,7 @@ export const DEFAULT_SETTINGS: Settings = {
   textSize: 'md',
   readingFont: 'serif',
   showSecrets: false,
+  lore: '',
 }
 
 export const REASONING_LEVELS: Reasoning[] = ['low', 'medium', 'high', 'xhigh', 'max']

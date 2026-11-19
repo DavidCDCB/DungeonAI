@@ -44,6 +44,7 @@ Tú llevas al personaje y decides el rumbo; la app se encarga de la narración, 
 | 🗣️ **Lectura y voz** | Voz del navegador con velocidad y lectura automática, tipografía de libro y letra capital en cada escena. Sin servidores TTS ni claves extra. |
 | 📱 **App instalable** | PWA que se instala desde el navegador y abre sin conexión. En el móvil, el compositor se adapta al teclado y la lectura está pensada para pantallas estrechas. |
 | 🔌 **Tu modelo, tus reglas** | Proveedores OpenAI-compatibles, ventana de contexto de 32k a 1M, detección automática y reintentos según lo que soporte el modelo. |
+| 🪶 **Prompt a tu medida** | Reemplaza el prompt del Dungeon Master desde *Ajustes → Prompt*, con marcadores de campaña y opción de volver al original. Viaja en la exportación. |
 | 🔒 **Privado por diseño** | La clave y las partidas viven en tu navegador. El servidor no almacena la clave, y puedes exportar la partida en JSON cuando quieras. |
 
 ## Capturas
@@ -126,6 +127,12 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 - **Ventana de contexto** configurable (32k–1M). Si el modelo informa una ventana menor, la app la detecta, reintenta y la guarda.
 - Reintentos automáticos: sin `stream_options`, sin streaming, sin `reasoning_effort` o con menos razonamiento, según lo que soporte el proveedor.
 - Contador de tokens sin porcentaje: contexto y razonamiento del último turno, con el desglose al pulsarlo.
+
+### Prompt personalizado
+
+- *Ajustes → Prompt* permite reemplazar el prompt del Dungeon Master. Deja el campo vacío para usar el original o pulsa **Cargar prompt original** para editarlo desde una copia.
+- Se sustituyen los marcadores `{{tema}}`, `{{mundo}}`, `{{personaje}}`, `{{nombre}}`, `{{clase}}` y `{{raza}}`. La app sigue añadiendo la memoria de la partida y el recordatorio de cierre.
+- El prompt forma parte de los ajustes guardados y se incluye en la exportación JSON.
 
 ### Tus datos
 
@@ -218,7 +225,7 @@ vercel.json · pwa-assets.config.ts · .vercelignore
 
 ### El contrato del Dungeon Master
 
-`src/prompts/dungeon_master.md` define el contrato entre el DM y la app:
+`src/prompts/dungeon_master.md` es el prompt original y define el contrato entre el DM y la app. Desde *Ajustes → Prompt* se puede reemplazar por uno personalizado; la app conserva la memoria y el recordatorio de cierre:
 
 - Orden de cada respuesta: narración → `[ESTADO]…[/ESTADO]` → cierre. Una petición de tirada (`[TIRADA]` con notación completa) va al final de la narración; si no hay tirada, van 5 opciones en primera persona y una con 🃏.
 - Cada sección de `[ESTADO]` reemplaza entera a la guardada. `Combate:` se omite al terminar el combate, y `Trama (solo DM)` es secreta.
@@ -234,7 +241,7 @@ vercel.json · pwa-assets.config.ts · .vercelignore
   "app": "dungeon-ai-web",
   "version": 1,
   "exportedAt": "2026-01-01T00:00:00.000Z",
-  "settings": { "apiKey": "", "baseUrl": "…", "model": "…", "stream": true, "contextWindow": 1000000 },
+  "settings": { "apiKey": "", "baseUrl": "…", "model": "…", "stream": true, "contextWindow": 1000000, "customPrompt": "" },
   "messages": [{ "role": "assistant", "content": "…", "memory": "Escena: …" }],
   "state": "Escena: …",
   "usage": { "prompt": 0, "completion": 0, "total": 0 },

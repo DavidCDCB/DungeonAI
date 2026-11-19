@@ -26,6 +26,8 @@ export interface Settings {
   character: string
   characterClass: string
   race: string
+  /** Prompt del Dungeon Master. Vacío = usar el prompt original. */
+  customPrompt: string
   browserVoice: string
   autoRead: boolean
   /** Muestra la respuesta del DM mientras se escribe (SSE). */
@@ -93,6 +95,7 @@ export const DEFAULT_SETTINGS: Settings = {
   character: 'Sabrina',
   characterClass: 'Maga',
   race: 'Humana',
+  customPrompt: '',
   browserVoice: '',
   autoRead: true,
   stream: true,

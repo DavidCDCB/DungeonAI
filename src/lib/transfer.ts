@@ -174,6 +174,7 @@ export function normalizeSettings(value: any): Settings {
     character: text('character', DEFAULT_SETTINGS.character),
     characterClass: text('characterClass', DEFAULT_SETTINGS.characterClass),
     race: text('race', DEFAULT_SETTINGS.race),
+    customPrompt: text('customPrompt', '').slice(0, 100_000),
     browserVoice: text('browserVoice', ''),
     autoRead: bool('autoRead', DEFAULT_SETTINGS.autoRead),
     stream: bool('stream', DEFAULT_SETTINGS.stream),

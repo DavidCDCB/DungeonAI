@@ -6,10 +6,13 @@ import {
   Download,
   Eye,
   EyeOff,
+  FileText,
   HardDrive,
   LoaderCircle,
   Plug,
   RefreshCw,
+  RotateCcw,
+  ScrollText,
   SlidersHorizontal,
   Smartphone,
   Sparkles,
@@ -21,6 +24,7 @@ import type { Settings } from '../types'
 import { CONTEXT_WINDOWS, DEFAULT_SETTINGS, REASONING_LEVELS } from '../types'
 import { PROVIDERS, providerFor, requiresApiKey } from '../lib/providers'
 import { testConnection, type ConnectionTest } from '../lib/api'
+import { promptBase } from '../lib/prompt'
 import { storageBytes } from '../lib/storage'
 import { formatBytes } from '../lib/format'
 import { useGame, type SettingsTab } from '../composables/useGame'
@@ -50,6 +54,7 @@ const { canInstall, installed, install } = usePwa()
 const tabs: Array<{ id: SettingsTab; label: string; icon: typeof Plug }> = [
   { id: 'connection', label: 'Conexión', icon: Plug },
   { id: 'campaign', label: 'Campaña', icon: Sparkles },
+  { id: 'prompt', label: 'Prompt', icon: ScrollText },
   { id: 'reading', label: 'Lectura y voz', icon: BookOpen },
   { id: 'data', label: 'Datos', icon: HardDrive },
 ]
@@ -58,6 +63,7 @@ const THEMES = ['Alta Fantasía', 'Fantasía Oscura', 'Horror Gótico', 'Intriga
 const WORLDS = ['Faerûn (Reinos Olvidados)', 'Eberron', 'Greyhawk', 'Ravenloft', 'Dragonlance (Krynn)', 'Exandria', 'Mundo original']
 const CLASSES = ['Bárbaro', 'Bardo', 'Brujo', 'Clérigo', 'Druida', 'Explorador', 'Guerrero', 'Hechicero', 'Mago', 'Monje', 'Paladín', 'Pícaro']
 const RACES = ['Humana', 'Elfa', 'Semielfa', 'Enana', 'Mediana', 'Gnoma', 'Tiflin', 'Dracónida', 'Semiorca']
+const PROMPT_MARKERS = ['{{tema}}', '{{mundo}}', '{{personaje}}', '{{nombre}}', '{{clase}}', '{{raza}}']
 
 const draft = reactive<Settings>({ ...DEFAULT_SETTINGS })
 const error = ref('')
@@ -81,6 +87,7 @@ const mixedContent = computed(
 const dirty = computed(() =>
   (Object.keys(draft) as Array<keyof Settings>).some((key) => draft[key] !== settings[key]),
 )
+const customPromptActive = computed(() => Boolean(draft.customPrompt.trim()))
 
 function syncProviderId() {
   providerId.value = providerFor(draft.baseUrl).id
@@ -138,6 +145,32 @@ function normalizeDraft() {
   draft.character = draft.character.trim() || DEFAULT_SETTINGS.character
 }
 
+async function confirmReplacePrompt(message: string): Promise<boolean> {
+  if (!draft.customPrompt.trim()) return true
+  const result = await ask({
+    title: '¿Reemplazar el prompt actual?',
+    message,
+    confirmLabel: 'Reemplazar',
+    cancelLabel: 'Cancelar',
+    danger: true,
+  })
+  return result === 'confirm'
+}
+
+async function loadBasePrompt() {
+  const ok = await confirmReplacePrompt(
+    'Se cargará el prompt original en el editor y se perderá el texto personalizado.',
+  )
+  if (ok) draft.customPrompt = promptBase
+}
+
+async function resetPrompt() {
+  const ok = await confirmReplacePrompt(
+    'Se vaciará el editor y se usará el prompt original de la app.',
+  )
+  if (ok) draft.customPrompt = ''
+}
+
 function save() {
   normalizeDraft()
   if (!draft.apiKey && requiresApiKey(draft.baseUrl)) {
@@ -192,7 +225,7 @@ async function onImportChange(event: Event) {
     const result = await ask({
       title: '¿Importar partida?',
       message:
-        'La importación reemplazará la partida, la memoria, los tokens y los ajustes actuales. Si el archivo no trae API key, se conserva la tuya.',
+        'La importación reemplazará la partida, la memoria, los tokens y los ajustes actuales, incluido el prompt. Si el archivo no trae API key, se conserva la tuya.',
       confirmLabel: 'Importar',
       danger: true,
     })
@@ -216,7 +249,7 @@ async function onInstall() {
   <AppDialog
     :open="settingsOpen"
     title="Ajustes"
-    description="Conexión con el modelo, campaña, lectura y datos"
+    description="Conexión con el modelo, campaña, prompt, lectura y datos"
     variant="drawer"
     @close="close"
   >
@@ -425,6 +458,85 @@ async function onInstall() {
       </div>
     </section>
 
+    <!-- Prompt -->
+    <section
+      v-show="settingsTab === 'prompt'"
+      id="panel-prompt"
+      role="tabpanel"
+      aria-labelledby="tab-prompt"
+      class="space-y-5"
+    >
+      <div class="rounded-xl border border-divider bg-surface-high/60 px-3 py-2.5 text-xs leading-5 text-muted">
+        El prompt define el rol, el tono y las reglas del Dungeon Master. Si dejas el campo vacío,
+        se usa el prompt original.
+        <strong class="text-parchment">Los cambios se aplican desde el próximo turno.</strong>
+      </div>
+
+      <div>
+        <div class="mb-1.5 flex items-center justify-between gap-2">
+          <span class="field-label !mb-0">Prompt del Dungeon Master</span>
+          <span
+            class="rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+            :class="
+              customPromptActive
+                ? 'border-gold-dim bg-gold/10 text-gold-bright'
+                : 'border-divider bg-surface-high text-muted'
+            "
+          >
+            {{ customPromptActive ? 'Personalizado' : 'Original' }}
+          </span>
+        </div>
+        <textarea
+          v-model="draft.customPrompt"
+          class="field min-h-[320px] resize-y font-mono text-[12px] leading-5"
+          placeholder="Deja el campo vacío para usar el prompt original, o pulsa «Cargar prompt original» para editarlo."
+          spellcheck="false"
+          maxlength="100000"
+          aria-label="Prompt personalizado del Dungeon Master"
+        />
+        <p class="field-hint">
+          El prompt personalizado reemplaza al original. La app añade siempre la memoria de la
+          partida y el recordatorio de cierre.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" class="btn-secondary btn-sm" @click="loadBasePrompt">
+          <FileText class="h-3.5 w-3.5" />
+          Cargar prompt original
+        </button>
+        <button
+          type="button"
+          class="btn-ghost btn-sm"
+          :disabled="!draft.customPrompt"
+          @click="resetPrompt"
+        >
+          <RotateCcw class="h-3.5 w-3.5" />
+          Usar el original
+        </button>
+        <span class="ml-auto text-xs tabular-nums text-faint">
+          {{ draft.customPrompt.length.toLocaleString('es') }} caracteres
+        </span>
+      </div>
+
+      <div class="rounded-xl border border-divider bg-ink-soft px-3 py-2.5">
+        <p class="field-label">Marcadores disponibles</p>
+        <div class="flex flex-wrap gap-1.5">
+          <code
+            v-for="marker in PROMPT_MARKERS"
+            :key="marker"
+            class="rounded-md border border-divider bg-surface-high px-1.5 py-0.5 font-mono text-[11px] text-gold"
+          >{{ marker }}</code>
+        </div>
+        <p class="field-hint">
+          Se sustituyen al enviar el prompt. Mantén el contrato de la app
+          (<code class="text-gold">[ESTADO]</code>, cinco opciones y
+          <code class="text-gold">[TIRADA]</code>) para que la memoria, los botones y los dados
+          sigan funcionando.
+        </p>
+      </div>
+    </section>
+
     <!-- Lectura y voz -->
     <section
       v-show="settingsTab === 'reading'"
@@ -537,8 +649,8 @@ async function onInstall() {
       <div class="card p-4">
         <p class="text-sm font-medium text-parchment">Copia de seguridad</p>
         <p class="mt-1 text-xs leading-5 text-muted">
-          Un archivo JSON con el historial, la memoria, los dados, los tokens y los ajustes. Úsalo para
-          continuar en otro dispositivo o navegador.
+          Un archivo JSON con el historial, la memoria, los dados, los tokens y los ajustes, incluido
+          el prompt personalizado. Úsalo para continuar en otro dispositivo o navegador.
         </p>
         <label class="mt-3 flex cursor-pointer items-center gap-2 text-xs text-muted">
           <input v-model="includeKey" type="checkbox" class="h-4 w-4 accent-[#d6b36a]">

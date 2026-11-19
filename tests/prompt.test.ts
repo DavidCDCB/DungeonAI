@@ -27,6 +27,26 @@ describe('Contrato entre el prompt del DM y la app', () => {
     expect(prompt.trimEnd().endsWith('es inválida.')).toBe(true)
   })
 
+  it('reemplaza el prompt original por el personalizado', () => {
+    const prompt = buildSystemPrompt(
+      {
+        ...DEFAULT_SETTINGS,
+        customPrompt: 'Narra como {{personaje}} con humor seco. Mundo: {{mundo}}.',
+      },
+      'Vida: 7',
+    )
+    expect(prompt).toContain('Narra como Sabrina con humor seco. Mundo: Faerûn (Reinos Olvidados).')
+    expect(prompt).not.toContain('RPG-Bot')
+    expect(prompt).toContain('MEMORIA GUARDADA DE LA PARTIDA')
+    expect(prompt).toContain('Vida: 7')
+    expect(prompt.trimEnd().endsWith('es inválida.')).toBe(true)
+  })
+
+  it('usa el prompt original cuando el personalizado está vacío', () => {
+    const original = buildSystemPrompt(DEFAULT_SETTINGS, '')
+    expect(buildSystemPrompt({ ...DEFAULT_SETTINGS, customPrompt: '   \n' }, '')).toBe(original)
+  })
+
   it('la plantilla de [ESTADO] se guarda con todas sus secciones', () => {
     const template = codeBlockWith('[ESTADO]')
     const body = template.replace(/\[\/?ESTADO\]/g, '')

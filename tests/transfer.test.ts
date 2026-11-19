@@ -82,6 +82,7 @@ describe('Transferencia de progreso', () => {
     expect(restored.settings.reasoning).toBe(DEFAULT_SETTINGS.reasoning)
     expect(restored.settings.autoRead).toBe(true)
     expect(restored.settings.baseUrl).toBe(DEFAULT_SETTINGS.baseUrl)
+    expect(restored.settings.customPrompt).toBe('')
     expect(restored.usage).toBeNull()
     expect(restored.dice).toEqual([])
   })
@@ -97,6 +98,18 @@ describe('Opciones de exportación', () => {
     expect(file.settings.apiKey).toBe('')
     const restored = parseProgressJson(JSON.stringify(file))
     expect(restored.messages[1]).toEqual({ role: 'assistant', content: 'Bienvenida', memory: 'Dinero: 5 PO' })
+  })
+
+  it('incluye el prompt personalizado al exportar e importar', () => {
+    const withPrompt: Settings = {
+      ...settings,
+      customPrompt: 'Narra como un bardo sarcástico.',
+    }
+    const file = serializeProgress(withPrompt, [], '', null, [])
+    expect(file.settings.customPrompt).toBe('Narra como un bardo sarcástico.')
+    expect(parseProgressJson(JSON.stringify(file)).settings.customPrompt).toBe(
+      'Narra como un bardo sarcástico.',
+    )
   })
 
   it('normaliza los nuevos ajustes', () => {

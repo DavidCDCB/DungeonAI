@@ -24,7 +24,8 @@ function replaceAllLiteral(text: string, needle: string, value: string): string 
 }
 
 export function buildSystemPrompt(settings: Settings, gameState: string): string {
-  let prompt = promptBase
+  // Un prompt personalizado reemplaza al original; vacío o solo espacios = original.
+  let prompt = settings.customPrompt.trim() ? settings.customPrompt : promptBase
   prompt = replaceAllLiteral(prompt, '{{tema}}', settings.theme)
   prompt = replaceAllLiteral(prompt, '{{mundo}}', settings.world)
   prompt = replaceAllLiteral(prompt, '{{personaje}}', settings.character)

@@ -1,26 +1,102 @@
-# Dungeon AI Web
+<div align="center">
 
-Partidas de rol en español con un **Dungeon Master de IA**, hechas con **Vite + Vue 3 + TypeScript + Tailwind CSS 4**. Narración en streaming, 5 opciones como botones, lanzador de dados con ventaja/desventaja, memoria `[ESTADO]` persistente, voz del navegador y **PWA instalable** que funciona sin conexión. Lista para desplegar en **Vercel** (incluido Vercel Drop).
+<img src="https://raw.githubusercontent.com/DavidCDCB/DungeonAI/main/public/pwa-192x192.png" width="88" alt="Dungeon AI" />
 
-## Requisitos
+# Dungeon AI
 
-- Node.js 22+ (probado con 22.11).
-- No requiere servidor TTS ni API key de voz.
+**Tu Dungeon Master con IA. Una aventura de rol en español que se escribe contigo.**
 
-## Arrancar
+Sin mesa, sin fichas que rellenar y sin esperar turnos: describes lo que haces, eliges entre las opciones que propone el DM y tiras los dados. La historia recuerda cada escena y continúa donde la dejaste.
 
-```powershell
-Set-Location "E:\NewBackup2\BackupCDCB\Algoritmos\protoWeb\dungeon-ai-web"
-npm install
-npm run dev
-```
+[![Jugar ahora](https://img.shields.io/badge/JUGAR_AHORA-cdcb--dungeon--ai.vercel.app-d6b36a?style=for-the-badge&labelColor=15121a)](https://cdcb-dungeon-ai.vercel.app)
+[![Código en GitHub](https://img.shields.io/badge/C%C3%93DIGO-GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/DavidCDCB/DungeonAI)
 
-Abre `http://localhost:5173`. La primera vez se abre **Ajustes → Conexión** porque no hay proveedor configurado. Usa **Probar conexión** para validar URL, key y modelo antes de jugar.
+![Vue 3](https://img.shields.io/badge/Vue_3-42b883?style=flat-square&logo=vuedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white)
+![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS_4-06b6d4?style=flat-square&logo=tailwindcss&logoColor=white)
+![PWA instalable](https://img.shields.io/badge/PWA-instalable-d6b36a?style=flat-square)
+![Versión 2.0.0](https://img.shields.io/badge/versi%C3%B3n-2.0.0-d6b36a?style=flat-square)
 
-## Funciones
+</div>
+
+<p align="center">
+  <a href="https://cdcb-dungeon-ai.vercel.app">
+    <img src="https://raw.githubusercontent.com/DavidCDCB/DungeonAI/main/public/screenshots/desktop-partida.jpg" alt="Dungeon AI en escritorio: narración del Dungeon Master, opciones numeradas y panel de memoria" width="100%" />
+  </a>
+</p>
+
+> **Juega gratis y sin crear una cuenta en Dungeon AI.** Conectas tu propia clave de un proveedor compatible con OpenAI —OpenCode, OpenAI, OpenRouter, Groq, DeepSeek, Ollama, LM Studio o uno personalizado— y la partida se queda en tu navegador.
+
+## ¿Qué es Dungeon AI?
+
+Dungeon AI es un juego de rol de fantasía para el navegador. Un **Dungeon Master de IA** narra la aventura en español, reacciona a tus decisiones, pide tiradas cuando la escena lo merece y mantiene un estado del mundo con la escena, el combate, la hoja de personaje, el inventario, las misiones y los PNJ.
+
+Tú llevas al personaje y decides el rumbo; la app se encarga de la narración, los dados, la continuidad y la presentación. Está pensada para partidas largas y para jugar cómodamente tanto en el escritorio como en el móvil, incluso instalada como aplicación.
+
+## Todo lo que necesitas para jugar
+
+| Función | Qué hace |
+|---|---|
+| 📖 **Narración en vivo** | El texto del DM aparece mientras se escribe, con un indicador de fase, tiempo y tokens de razonamiento. Puedes detener el turno cuando quieras. |
+| 🎲 **Dados de verdad** | El DM pide la tirada y la app crea el botón: `1d20 + 5`, ventaja, desventaja, d4–d100, varios grupos y descarte del menor. Críticos y pifias resaltados. |
+| 🧠 **Memoria persistente** | La escena, el combate, la hoja, el dinero, las condiciones, las misiones y los PNJ se guardan en un estado `[ESTADO]` que se actualiza cada turno. |
+| 🕹️ **Decisiones con un toque** | Cinco opciones numeradas (atajos `1`–`5`), una opción 🃏 de comodín y la posibilidad de editar cualquier opción antes de enviarla. |
+| 🗣️ **Lectura y voz** | Voz del navegador con velocidad y lectura automática, tipografía de libro y letra capital en cada escena. Sin servidores TTS ni claves extra. |
+| 📱 **App instalable** | PWA que se instala desde el navegador y abre sin conexión. En el móvil, el compositor se adapta al teclado y la lectura está pensada para pantallas estrechas. |
+| 🔌 **Tu modelo, tus reglas** | Proveedores OpenAI-compatibles, ventana de contexto de 32k a 1M, detección automática y reintentos según lo que soporte el modelo. |
+| 🔒 **Privado por diseño** | La clave y las partidas viven en tu navegador. El servidor no almacena la clave, y puedes exportar la partida en JSON cuando quieras. |
+
+## Capturas
+
+<table>
+  <tr>
+    <td width="68%" valign="top">
+      <a href="https://cdcb-dungeon-ai.vercel.app">
+        <img src="https://raw.githubusercontent.com/DavidCDCB/DungeonAI/main/public/screenshots/desktop-partida.jpg" alt="Partida en escritorio con narración, opciones y panel lateral" width="100%" />
+      </a>
+    </td>
+    <td width="32%" valign="top">
+      <a href="https://cdcb-dungeon-ai.vercel.app">
+        <img src="https://raw.githubusercontent.com/DavidCDCB/DungeonAI/main/public/screenshots/mobile-partida.jpg" alt="Partida en móvil con lectura a pantalla completa" width="100%" />
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Escritorio</b> — chat, opciones y memoria siempre a la vista.</sub></td>
+    <td align="center"><sub><b>Móvil</b> — lectura cómoda y compositor sobre el teclado.</sub></td>
+  </tr>
+</table>
+
+## Empieza en menos de un minuto
+
+1. **Abre [cdcb-dungeon-ai.vercel.app](https://cdcb-dungeon-ai.vercel.app).** No hay nada que descargar. En el móvil puedes añadirla a la pantalla de inicio para jugar como una app.
+2. **Conecta tu modelo** en *Ajustes → Conexión*: elige el proveedor, pega la URL, la clave y el modelo, y pulsa **Probar conexión**.
+3. **Crea tu personaje y juega.** Escribe tu acción o elige una de las cinco opciones; el DM narra, pide tiradas y actualiza la memoria.
+
+> **Tu clave, tu partida.** La clave se guarda solo en este navegador y viaja al proveedor a través del proxy de la app; el servidor no la almacena. Las partidas viven en `localStorage` y puedes exportarlas o importarlas en JSON.
+
+## Preguntas frecuentes
+
+**¿Necesito una cuenta?**  
+No. Dungeon AI no tiene registro: solo necesitas una clave de API del proveedor de IA que elijas.
+
+**¿Cuánto cuesta?**  
+La app es gratis. El proveedor puede cobrar por tokens según el modelo; con Ollama o LM Studio en tu equipo no hay coste por uso.
+
+**¿Dónde se guarda mi partida?**  
+En el almacenamiento local de tu navegador, con autoguardado. *Ajustes → Datos* muestra el espacio usado y permite exportar o importar la partida.
+
+**¿Puedo jugar sin internet?**  
+La app instalada abre sin conexión y conserva tus partidas. Para narrar, el DM necesita llegar al modelo: si usas uno local, todo ocurre en tu equipo.
+
+**¿Hay app para iOS o Android?**  
+Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a pantalla de inicio**.
+
+## Manual de juego
 
 ### Partida
-- **Streaming:** el texto del DM aparece mientras se escribe. Mientras tanto se ocultan el bloque `[ESTADO]` y las opciones a medio escribir. Un indicador muestra la fase (consultando notas, pensando, escribiendo), el tiempo y los tokens de razonamiento. **Detener** cancela el turno.
+
+- **Streaming:** el texto del DM aparece mientras se escribe. Mientras tanto se ocultan el bloque `[ESTADO]` y las opciones a medio escribir. El indicador muestra la fase (consultando notas, pensando, escribiendo), el tiempo y los tokens de razonamiento. **Detener** cancela el turno.
 - **Opciones** como botones numerados (atajos `1`–`5`). La opción 🃏 se destaca como *comodín* y cualquier opción se puede editar antes de enviarla.
 - **Regenerar** la última respuesta del DM; si falla, se restaura la anterior.
 - **Editar** cualquier mensaje tuyo: deshace desde ese punto, devuelve el texto al cuadro y la memoria vuelve a como estaba. El aviso trae **Deshacer**.
@@ -28,30 +104,36 @@ Abre `http://localhost:5173`. La primera vez se abre **Ajustes → Conexión** p
 - El borrador se guarda solo. Las campañas largas se paginan (60 mensajes, «Mostrar anteriores»).
 
 ### Dados
+
 - Cuando el DM pide una tirada, la app lee la notación (`1d20 + 5`, `1d8`, «con ventaja», «6 grupos de 4d6 descartando el más bajo») y ofrece botones **Lanzar 1d20 + 5**.
 - Lanzador con d4–d100, cantidad, modificador, **ventaja/desventaja** y **descartar el menor**, varias tiradas por mensaje y sugerencias del DM.
 - La tirada se envía en el mismo momento en que se lanza. La animación es solo visual, así que cerrar el diálogo no permite repetirla. Los resultados se muestran como tarjetas, con el dado descartado tachado y el **crítico** o la **pifia** resaltados.
 
 ### Memoria y panel
-- Panel lateral (escritorio) o cajón (móvil) con personaje, **escena**, **combate activo**, hoja, inventario, dinero, condiciones, misiones y PNJs.
+
+- Panel lateral (escritorio) o cajón (móvil) con personaje, **escena**, **combate activo**, hoja, inventario, dinero, condiciones, misiones y PNJ.
 - La sección **Trama (solo DM)** está oculta por defecto (spoilers); se puede mostrar en *Lectura y voz*.
 - Editor de memoria dedicado. Cada turno guarda una instantánea de la memoria, lo que permite deshacer y regenerar sin corromperla.
 
 ### Lectura y voz
+
 - Tamaño de texto (pequeño/normal/grande) y letra de narración (Literata «libro» o Inter «moderna»). Letra capital en cada escena.
 - Voz del navegador con selector, **Probar**, velocidad y lectura automática. El texto se lee por fragmentos para evitar el corte de ~15 s de Chrome con voces largas.
 
 ### Conexión y contexto
-- Proveedores OpenAI-compatibles (OpenCode, OpenAI, OpenRouter, Groq, DeepSeek, Ollama, LM Studio, personalizado).
+
+- Proveedores OpenAI-compatibles: OpenCode, OpenAI, OpenRouter, Groq, DeepSeek, Ollama, LM Studio y personalizado.
 - **Ventana de contexto** configurable (32k–1M). Si el modelo informa una ventana menor, la app la detecta, reintenta y la guarda.
 - Reintentos automáticos: sin `stream_options`, sin streaming, sin `reasoning_effort` o con menos razonamiento, según lo que soporte el proveedor.
 - Contador de tokens sin porcentaje: contexto y razonamiento del último turno, con el desglose al pulsarlo.
 
-### Datos
-- Autoguardado en `localStorage`, con aviso si el almacenamiento se llena y medidor de uso en *Ajustes → Datos*.
-- **Exportar/Importar** la partida en JSON. Por defecto **sin la API key**; al importar un archivo sin key se conserva la de este navegador.
+### Tus datos
 
-### Móvil (probado con el viewport del POCO X7 Pro, 407×904)
+- Autoguardado en `localStorage`, con aviso si el almacenamiento se llena y medidor de uso en *Ajustes → Datos*.
+- **Exportar/Importar** la partida en JSON. Por defecto **sin la API key**; al importar un archivo sin clave se conserva la de este navegador.
+
+### En el móvil
+
 - El teclado encoge la app (`interactive-widget=resizes-content`): el compositor queda sobre el teclado y el chat sigue anclado al final.
 - Compositor en una sola fila (dados · comandos · texto · enviar); la línea de tokens se oculta mientras escribes.
 - Funciona con Gboard: el botón Enviar se activa aunque la palabra siga «en composición».
@@ -60,69 +142,39 @@ Abre `http://localhost:5173`. La primera vez se abre **Ajustes → Conexión** p
 - Pantalla encendida mientras el DM piensa, escribe o lee en voz alta (Screen Wake Lock), y vibración al lanzar dados (más marcada con críticos y pifias).
 - Sin «tirar para recargar»; aviso antes de recargar con un turno en curso.
 - Lectura a 16 px en pantallas estrechas; cabecera y compositor compactos en horizontal.
-- El manifest incluye capturas para el diálogo de instalación enriquecido de Chrome.
 
 ### Accesibilidad
+
 - Diálogos con foco atrapado, `Esc` y restauración del foco; región `aria-live` para avisar de respuestas nuevas; enlace «saltar al compositor»; respeta `prefers-reduced-motion`.
 - Atajos: `1`–`5` opciones · `D` dados · `/` escribir · `Esc` cerrar.
 
-## PWA
+## Instálala como app
 
-- Instalable (botón **Instalar app** en la cabecera o en *Ajustes → Datos*; en iOS: Compartir → «Añadir a pantalla de inicio»).
+- Botón **Instalar app** en la cabecera o en *Ajustes → Datos*. En iOS: Compartir → **Añadir a pantalla de inicio**.
 - El service worker precachea la app, las fuentes (subconjunto latino, locales) y los iconos: abre sin conexión. Las llamadas al modelo (`/api/…`) nunca se cachean.
 - Aviso de **nueva versión** con botón *Actualizar*; indicador *Sin conexión* en la cabecera.
 - Iconos generados desde `public/favicon.svg` con `npm run icons`.
 
-## Desplegar en Vercel
+## Para desarrolladores
 
-`vercel.json` define el proxy `/api/opencode` → `https://opencode.ai/inference/go/openai/v1` como **rewrite externo** (OpenCode no permite CORS), las cabeceras de seguridad (CSP, `X-Frame-Options`, etc.) y la caché correcta de `sw.js`, el manifest y `/assets`. No hace falta ninguna función serverless.
+### Arrancar en local
 
-### Opción A — Vercel Drop sin compilar en Vercel (funciona sin cuenta)
+Requiere **Node.js 22+** (probado con 22.11). No hace falta servidor TTS ni clave de voz.
 
-```powershell
-npm run build
+```bash
+git clone https://github.com/DavidCDCB/DungeonAI.git
+cd DungeonAI
+npm install
+npm run dev
 ```
 
-Arrastra la carpeta **`dist/`** a [vercel.com/drop](https://vercel.com/drop). El build copia en `dist/vercel.json` el proxy y las cabeceras (sin las opciones de build), así que `dist/` es un sitio estático completo. Sin cuenta, el despliegue es temporal hasta que lo reclames.
+Abre `http://localhost:5173`. La primera vez se abre **Ajustes → Conexión** porque no hay proveedor configurado. Usa **Probar conexión** para validar URL, clave y modelo antes de jugar.
 
-### Opción B — Vercel compila el proyecto (requiere cuenta)
+### Stack
 
-Arrastra la carpeta del proyecto (o súbela a Git y conéctala). Vercel detecta Vite y usa `npm run build` y `dist` según `vercel.json`. `.vercelignore` excluye `node_modules` y `dist`.
+**Vite + Vue 3 + TypeScript + Tailwind CSS 4**, con `vite-plugin-pwa` para el service worker y el manifest, y **Vitest** para las pruebas. Sin backend propio: un rewrite de Vercel hace de proxy para OpenCode.
 
-### Notas de producción
-- El CDN de Vercel espera hasta **120 s** al primer byte de un rewrite externo. Deja el **streaming activado** (por defecto): sin él, el razonamiento `max` puede superar ese límite.
-- La API key la pone cada jugador en su navegador y viaja al proveedor a través del proxy; no se guarda en el servidor.
-- Desde una página HTTPS, el navegador bloquea URLs `http://` que no sean `localhost`. Ollama o LM Studio funcionan en `http://localhost` del propio equipo.
-
-## Prompt del Dungeon Master
-
-`src/prompts/dungeon_master.md` define el contrato entre el DM y la app:
-
-- Orden de cada respuesta: narración → `[ESTADO]…[/ESTADO]` → cierre. Una petición de tirada (`[TIRADA]` con notación completa) va al final de la narración; si no hay tirada, van 5 opciones en primera persona y una con 🃏.
-- Cada sección de `[ESTADO]` reemplaza entera a la guardada. `Combate:` se omite al terminar el combate, y `Trama (solo DM)` es secreta.
-- Documenta el formato exacto de los mensajes del lanzador de dados y avisa al modelo de que su historial le llega sin `[ESTADO]` ni opciones (para que no imite el recorte).
-- Se interpolan `{{tema}}`, `{{mundo}}`, `{{personaje}}`/`{{nombre}}`, `{{clase}}` y `{{raza}}`. La app añade la memoria vigente y un recordatorio de cierre (`src/lib/prompt.ts`).
-
-`tests/prompt.test.ts` comprueba que el prompt y el parser encajan: la plantilla `[ESTADO]` produce todas las secciones, los ejemplos de dados coinciden con lo que genera el lanzador, los ejemplos de petición producen botones y los comandos del menú están documentados.
-
-## Exportar e importar
-
-```json
-{
-  "app": "dungeon-ai-web",
-  "version": 1,
-  "exportedAt": "2026-01-01T00:00:00.000Z",
-  "settings": { "apiKey": "", "baseUrl": "…", "model": "…", "stream": true, "contextWindow": 1000000 },
-  "messages": [{ "role": "assistant", "content": "…", "memory": "Escena: …" }],
-  "state": "Escena: …",
-  "usage": { "prompt": 0, "completion": 0, "total": 0 },
-  "dice": [{ "die": "d20", "count": "1", "bonus": "5", "mode": "advantage" }]
-}
-```
-
-Los archivos de versiones anteriores siguen siendo compatibles (`memory` y `mode` son opcionales).
-
-## Scripts
+### Scripts
 
 | Comando | Qué hace |
 |---|---|
@@ -132,7 +184,7 @@ Los archivos de versiones anteriores siguen siendo compatibles (`memory` y `mode
 | `npm test` | Pruebas (Vitest) |
 | `npm run icons` | Regenera los iconos PWA desde `public/favicon.svg` |
 
-## Estructura
+### Estructura
 
 ```text
 src/
@@ -163,3 +215,65 @@ src/
 tests/                         Vitest: lógica, parser y contrato con el prompt
 vercel.json · pwa-assets.config.ts · .vercelignore
 ```
+
+### El contrato del Dungeon Master
+
+`src/prompts/dungeon_master.md` define el contrato entre el DM y la app:
+
+- Orden de cada respuesta: narración → `[ESTADO]…[/ESTADO]` → cierre. Una petición de tirada (`[TIRADA]` con notación completa) va al final de la narración; si no hay tirada, van 5 opciones en primera persona y una con 🃏.
+- Cada sección de `[ESTADO]` reemplaza entera a la guardada. `Combate:` se omite al terminar el combate, y `Trama (solo DM)` es secreta.
+- Documenta el formato exacto de los mensajes del lanzador de dados y avisa al modelo de que su historial le llega sin `[ESTADO]` ni opciones (para que no imite el recorte).
+- Se interpolan `{{tema}}`, `{{mundo}}`, `{{personaje}}`/`{{nombre}}`, `{{clase}}` y `{{raza}}`. La app añade la memoria vigente y un recordatorio de cierre (`src/lib/prompt.ts`).
+
+`tests/prompt.test.ts` comprueba que el prompt y el parser encajan: la plantilla `[ESTADO]` produce todas las secciones, los ejemplos de dados coinciden con lo que genera el lanzador, los ejemplos de petición producen botones y los comandos del menú están documentados.
+
+### Exportar e importar
+
+```json
+{
+  "app": "dungeon-ai-web",
+  "version": 1,
+  "exportedAt": "2026-01-01T00:00:00.000Z",
+  "settings": { "apiKey": "", "baseUrl": "…", "model": "…", "stream": true, "contextWindow": 1000000 },
+  "messages": [{ "role": "assistant", "content": "…", "memory": "Escena: …" }],
+  "state": "Escena: …",
+  "usage": { "prompt": 0, "completion": 0, "total": 0 },
+  "dice": [{ "die": "d20", "count": "1", "bonus": "5", "mode": "advantage" }]
+}
+```
+
+Los archivos de versiones anteriores siguen siendo compatibles (`memory` y `mode` son opcionales).
+
+### Desplegar en Vercel
+
+`vercel.json` define el proxy `/api/opencode` → `https://opencode.ai/inference/go/openai/v1` como **rewrite externo** (OpenCode no permite CORS), las cabeceras de seguridad (CSP, `X-Frame-Options`, etc.) y la caché correcta de `sw.js`, el manifest y `/assets`. No hace falta ninguna función serverless.
+
+**Opción A — Vercel Drop, sin compilar en Vercel (funciona sin cuenta).**
+
+```bash
+npm run build
+```
+
+Arrastra la carpeta **`dist/`** a [vercel.com/drop](https://vercel.com/drop). El build copia en `dist/vercel.json` el proxy y las cabeceras (sin las opciones de build), así que `dist/` es un sitio estático completo. Sin cuenta, el despliegue es temporal hasta que lo reclames.
+
+**Opción B — Vercel compila el proyecto (requiere cuenta).**
+
+Arrastra la carpeta del proyecto (o súbela a Git y conéctala). Vercel detecta Vite y usa `npm run build` y `dist` según `vercel.json`. `.vercelignore` excluye `node_modules` y `dist`.
+
+**Notas de producción**
+
+- El CDN de Vercel espera hasta **120 s** al primer byte de un rewrite externo. Deja el **streaming activado** (por defecto): sin él, el razonamiento `max` puede superar ese límite.
+- La API key la pone cada jugador en su navegador y viaja al proveedor a través del proxy; no se guarda en el servidor.
+- Desde una página HTTPS, el navegador bloquea URLs `http://` que no sean `localhost`. Ollama o LM Studio funcionan en `http://localhost` del propio equipo.
+
+## Contribuir
+
+¿Un bug, una idea o una partida que contar? Abre un [issue](https://github.com/DavidCDCB/DungeonAI/issues) o envía un pull request. Las capturas, los textos y el prompt del DM también aceptan mejoras.
+
+## Créditos
+
+Hecho con cariño para jugar en español. Tipografías **Cinzel**, **Literata** e **Inter** vía Fontsource; iconos de **Lucide**. El Dungeon Master corre sobre el modelo que tú elijas.
+
+<p align="center">
+  <sub><a href="https://cdcb-dungeon-ai.vercel.app"><b>Jugar ahora</b></a> · <a href="https://github.com/DavidCDCB/DungeonAI">GitHub</a> · Dungeon AI</sub>
+</p>

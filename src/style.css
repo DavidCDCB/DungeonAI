@@ -1,0 +1,176 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #0b0a0e;
+  --color-surface: #15131a;
+  --color-surface-high: #1e1a24;
+  --color-gold: #d6b36a;
+  --color-gold-bright: #f0d69a;
+  --color-gold-dim: #8a6e3c;
+  --color-parchment: #e8dfc8;
+  --color-muted: #9b917e;
+  --color-divider: #2a2530;
+  --color-error: #e57373;
+  --color-warning: #e0b35a;
+  --font-serif: Georgia, "Times New Roman", serif;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink);
+  color: var(--color-parchment);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3a3340 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #3a3340;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::selection {
+  background: rgba(214, 179, 106, 0.35);
+  color: #fff;
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-xl border border-divider bg-surface-high px-3 py-2 text-sm text-parchment outline-none transition focus:border-gold-dim;
+  }
+
+  .field-label {
+    @apply mb-1 block text-[11px] font-semibold uppercase tracking-wider text-muted;
+  }
+
+  .btn-gold {
+    @apply rounded-xl border border-gold-dim bg-gold/10 px-4 py-2 text-sm font-medium text-gold transition hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-ghost {
+    @apply rounded-xl border border-divider bg-surface-high px-4 py-2 text-sm text-parchment transition hover:border-gold-dim hover:text-gold disabled:opacity-40;
+  }
+
+  .icon-button {
+    @apply inline-flex h-10 w-10 items-center justify-center rounded-full text-muted transition hover:bg-white/5 hover:text-gold disabled:opacity-40;
+  }
+
+  .card {
+    @apply rounded-2xl border border-divider bg-surface;
+  }
+
+  .dm-markdown {
+    @apply text-[15px] leading-7 text-parchment;
+  }
+
+  .dm-markdown p {
+    @apply my-3;
+  }
+
+  .dm-markdown h1,
+  .dm-markdown h2,
+  .dm-markdown h3,
+  .dm-markdown h4 {
+    @apply mb-2 mt-5 font-serif font-semibold text-gold-bright;
+  }
+
+  .dm-markdown h1 {
+    @apply text-xl;
+  }
+
+  .dm-markdown h2 {
+    @apply text-lg;
+  }
+
+  .dm-markdown h3 {
+    @apply text-base;
+  }
+
+  .dm-markdown strong {
+    @apply font-semibold text-gold-bright;
+  }
+
+  .dm-markdown em {
+    @apply italic text-parchment/90;
+  }
+
+  .dm-markdown ul,
+  .dm-markdown ol {
+    @apply my-3 ml-5 list-outside space-y-1;
+  }
+
+  .dm-markdown ul {
+    @apply list-disc;
+  }
+
+  .dm-markdown ol {
+    @apply list-decimal;
+  }
+
+  .dm-markdown blockquote {
+    @apply my-3 border-l-2 border-gold-dim pl-4 italic text-parchment/80;
+  }
+
+  .dm-markdown code {
+    @apply rounded bg-black/30 px-1.5 py-0.5 font-mono text-[13px] text-gold-bright;
+  }
+
+  .dm-markdown pre {
+    @apply my-3 overflow-x-auto rounded-xl bg-black/30 p-3 text-[13px];
+  }
+
+  .dm-markdown pre code {
+    @apply bg-transparent p-0;
+  }
+
+  .dm-markdown hr {
+    @apply my-5 border-divider;
+  }
+
+  .dm-markdown a {
+    @apply text-gold underline decoration-gold-dim underline-offset-2;
+  }
+
+  .dm-markdown table {
+    @apply my-3 w-full border-collapse text-sm;
+  }
+
+  .dm-markdown th,
+  .dm-markdown td {
+    @apply border border-divider px-2 py-1 text-left;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 180ms ease-out both;
+}

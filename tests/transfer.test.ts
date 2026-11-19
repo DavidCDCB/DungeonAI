@@ -86,3 +86,31 @@ describe('Transferencia de progreso', () => {
     expect(restored.dice).toEqual([])
   })
 })
+
+describe('Opciones de exportación', () => {
+  it('puede omitir la API key y conserva las instantáneas de memoria', () => {
+    const withMemory = [
+      createMessage('user', 'Hola'),
+      { ...createMessage('assistant', 'Bienvenida'), memory: 'Dinero: 5 PO' },
+    ]
+    const file = serializeProgress(settings, withMemory, '', null, [], { includeApiKey: false })
+    expect(file.settings.apiKey).toBe('')
+    const restored = parseProgressJson(JSON.stringify(file))
+    expect(restored.messages[1]).toEqual({ role: 'assistant', content: 'Bienvenida', memory: 'Dinero: 5 PO' })
+  })
+
+  it('normaliza los nuevos ajustes', () => {
+    const restored = parseProgressJson(
+      JSON.stringify({
+        app: PROGRESS_APP,
+        version: 1,
+        messages: [],
+        settings: { contextWindow: 5, speechRate: 9, textSize: 'xl', stream: false },
+      }),
+    )
+    expect(restored.settings.contextWindow).toBe(DEFAULT_SETTINGS.contextWindow)
+    expect(restored.settings.speechRate).toBe(DEFAULT_SETTINGS.speechRate)
+    expect(restored.settings.textSize).toBe('md')
+    expect(restored.settings.stream).toBe(false)
+  })
+})

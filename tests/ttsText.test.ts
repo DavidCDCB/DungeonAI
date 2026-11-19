@@ -20,3 +20,26 @@ describe('TtsText', () => {
     expect(cleanForSpeech('🎲🕯️⭐✅❤️')).toBe('')
   })
 })
+
+import { chunkForSpeech } from '../src/lib/ttsText'
+
+describe('chunkForSpeech', () => {
+  it('agrupa frases sin superar el máximo', () => {
+    const text = 'Primera frase corta. Segunda frase algo más larga que la primera. Tercera.'
+    const chunks = chunkForSpeech(text, 40)
+    expect(chunks.every((chunk) => chunk.length <= 40)).toBe(true)
+    expect(chunks.join(' ')).toBe(text)
+  })
+
+  it('parte frases enormes por comas y palabras', () => {
+    const long = Array.from({ length: 80 }, (_, i) => `palabra${i}`).join(' ')
+    const chunks = chunkForSpeech(long, 100)
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks.every((chunk) => chunk.length <= 100)).toBe(true)
+    expect(chunks.join(' ')).toBe(long)
+  })
+
+  it('devuelve vacío sin texto', () => {
+    expect(chunkForSpeech('   ')).toEqual([])
+  })
+})

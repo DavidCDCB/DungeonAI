@@ -1,32 +1,101 @@
 @import "tailwindcss";
 
+/* Fuentes locales (subconjunto latino) para que la PWA funcione sin conexión. */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+@font-face {
+  font-family: "Literata Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("../node_modules/@fontsource-variable/literata/files/literata-latin-wght-normal.woff2") format("woff2-variations");
+}
+
+@font-face {
+  font-family: "Literata Variable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("../node_modules/@fontsource-variable/literata/files/literata-latin-wght-italic.woff2") format("woff2-variations");
+}
+
+@font-face {
+  font-family: "Cinzel Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400 900;
+  src: url("../node_modules/@fontsource-variable/cinzel/files/cinzel-latin-wght-normal.woff2") format("woff2-variations");
+}
+
 @theme {
   --color-ink: #0b0a0e;
-  --color-surface: #15131a;
-  --color-surface-high: #1e1a24;
+  --color-ink-soft: #110f15;
+  --color-surface: #16131b;
+  --color-surface-high: #1f1a25;
+  --color-surface-higher: #29222f;
   --color-gold: #d6b36a;
   --color-gold-bright: #f0d69a;
   --color-gold-dim: #8a6e3c;
-  --color-parchment: #e8dfc8;
-  --color-muted: #9b917e;
-  --color-divider: #2a2530;
-  --color-error: #e57373;
-  --color-warning: #e0b35a;
-  --font-serif: Georgia, "Times New Roman", serif;
+  --color-parchment: #ece3cc;
+  --color-muted: #a39883;
+  --color-faint: #7a705f;
+  --color-divider: #2c2632;
+  --color-leather: #2f2318;
+  --color-arcane: #b79cff;
+  --color-error: #ef8a80;
+  --color-warning: #e7bd66;
+  --color-success: #86cf98;
+  --font-display: "Cinzel Variable", "Cinzel", Georgia, serif;
+  --font-serif: "Literata Variable", Georgia, "Times New Roman", serif;
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+  --reading-size: 17px;
+  --reading-leading: 1.78;
+  --reading-font: var(--font-serif);
+  /* El texto claro sobre fondo oscuro parece más grueso: se compensa. */
+  --reading-weight: 370;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+:root[data-text="sm"] {
+  --reading-size: 15.5px;
+}
+
+:root[data-text="lg"] {
+  --reading-size: 19.5px;
+}
+
+:root[data-font="sans"] {
+  --reading-font: var(--font-sans);
+  --reading-leading: 1.72;
+  --reading-weight: 400;
 }
 
 html,
 body,
 #app {
-  min-height: 100%;
+  height: 100%;
 }
 
 body {
   margin: 0;
-  background: var(--color-ink);
+  background:
+    radial-gradient(1100px 520px at 50% -220px, rgb(214 179 106 / 0.09), transparent 70%),
+    var(--color-ink);
   color: var(--color-parchment);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
 
 * {
@@ -49,60 +118,138 @@ body {
 }
 
 ::selection {
-  background: rgba(214, 179, 106, 0.35);
+  background: rgb(214 179 106 / 0.35);
   color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
 }
 
 @layer components {
   .field {
-    @apply w-full rounded-xl border border-divider bg-surface-high px-3 py-2 text-sm text-parchment outline-none transition focus:border-gold-dim;
+    @apply w-full rounded-xl border border-divider bg-ink-soft px-3 py-2.5 text-sm text-parchment outline-none transition placeholder:text-faint hover:border-[#3d3545] focus:border-gold-dim focus:ring-2 focus:ring-gold/15;
   }
 
   .field-label {
-    @apply mb-1 block text-[11px] font-semibold uppercase tracking-wider text-muted;
+    @apply mb-1.5 block text-[11px] font-semibold tracking-wide text-muted uppercase;
   }
 
-  .btn-gold {
-    @apply rounded-xl border border-gold-dim bg-gold/10 px-4 py-2 text-sm font-medium text-gold transition hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-40;
+  .field-hint {
+    @apply mt-1.5 text-xs leading-5 text-muted;
+  }
+
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost,
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition select-none disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-primary {
+    @apply bg-gold text-ink shadow-[0_0_0_1px_rgb(240_214_154/0.4),0_8px_24px_-12px_rgb(214_179_106/0.6)] hover:bg-gold-bright active:translate-y-px;
+  }
+
+  .btn-secondary {
+    @apply border border-gold-dim/70 bg-gold/10 text-gold-bright hover:border-gold hover:bg-gold/15;
   }
 
   .btn-ghost {
-    @apply rounded-xl border border-divider bg-surface-high px-4 py-2 text-sm text-parchment transition hover:border-gold-dim hover:text-gold disabled:opacity-40;
+    @apply border border-divider bg-surface-high text-parchment hover:border-gold-dim hover:text-gold-bright;
   }
 
-  .icon-button {
-    @apply inline-flex h-10 w-10 items-center justify-center rounded-full text-muted transition hover:bg-white/5 hover:text-gold disabled:opacity-40;
+  .btn-danger {
+    @apply border border-error/50 bg-error/15 text-error hover:bg-error/25;
+  }
+
+  .btn-sm {
+    @apply rounded-lg px-2.5 py-1.5 text-xs;
+  }
+
+  .icon-btn {
+    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-white/5 hover:text-gold-bright disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .icon-btn-sm {
+    @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint transition hover:bg-white/5 hover:text-gold-bright disabled:opacity-40;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-divider bg-surface-high px-3 py-1.5 text-xs text-parchment transition hover:border-gold-dim hover:text-gold-bright;
   }
 
   .card {
     @apply rounded-2xl border border-divider bg-surface;
   }
 
+  .eyebrow {
+    @apply flex items-center gap-2 text-[11px] font-semibold tracking-[0.16em] text-gold uppercase;
+  }
+
+  .kbd {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-divider bg-ink-soft px-1 font-mono text-[10px] leading-none text-muted;
+  }
+
+  .seg {
+    @apply inline-flex rounded-xl border border-divider bg-ink-soft p-1;
+  }
+
+  .seg-item {
+    @apply rounded-lg px-3 py-1.5 text-xs font-medium text-muted transition hover:text-parchment aria-pressed:bg-surface-higher aria-pressed:text-gold-bright aria-pressed:shadow-[inset_0_0_0_1px_rgb(138_110_60/0.6)];
+  }
+
   .dm-markdown {
-    @apply text-[15px] leading-7 text-parchment;
+    font-family: var(--reading-font);
+    font-size: var(--reading-size);
+    line-height: var(--reading-leading);
+    font-weight: var(--reading-weight);
+    @apply text-parchment;
+    overflow-wrap: anywhere;
+  }
+
+  .dm-markdown > :first-child {
+    margin-top: 0;
+  }
+
+  .dm-markdown > :last-child {
+    margin-bottom: 0;
   }
 
   .dm-markdown p {
-    @apply my-3;
+    margin: 0.85em 0;
+  }
+
+  .dm-markdown.has-dropcap > p:first-child::first-letter {
+    float: left;
+    font-family: var(--font-display);
+    font-size: 3.2em;
+    line-height: 0.9;
+    font-weight: 700;
+    padding: 0.06em 0.12em 0 0;
+    color: var(--color-gold-bright);
+    text-shadow: 0 0 18px rgb(214 179 106 / 0.35);
   }
 
   .dm-markdown h1,
   .dm-markdown h2,
   .dm-markdown h3,
   .dm-markdown h4 {
-    @apply mb-2 mt-5 font-serif font-semibold text-gold-bright;
+    @apply mt-6 mb-2 font-display font-semibold tracking-wide text-gold-bright;
   }
 
   .dm-markdown h1 {
-    @apply text-xl;
+    font-size: 1.3em;
   }
 
   .dm-markdown h2 {
-    @apply text-lg;
+    font-size: 1.18em;
   }
 
-  .dm-markdown h3 {
-    @apply text-base;
+  .dm-markdown h3,
+  .dm-markdown h4 {
+    font-size: 1.05em;
   }
 
   .dm-markdown strong {
@@ -110,7 +257,7 @@ body {
   }
 
   .dm-markdown em {
-    @apply italic text-parchment/90;
+    @apply italic text-[#e3d6b6];
   }
 
   .dm-markdown ul,
@@ -119,23 +266,27 @@ body {
   }
 
   .dm-markdown ul {
-    @apply list-disc;
+    @apply list-disc marker:text-gold-dim;
   }
 
   .dm-markdown ol {
-    @apply list-decimal;
+    @apply list-decimal marker:text-gold-dim;
   }
 
   .dm-markdown blockquote {
-    @apply my-3 border-l-2 border-gold-dim pl-4 italic text-parchment/80;
+    @apply my-4 rounded-r-xl border-l-2 border-gold-dim bg-gold/5 py-2 pr-3 pl-4 text-[#e3d6b6];
+  }
+
+  .dm-markdown blockquote p {
+    margin: 0.3em 0;
   }
 
   .dm-markdown code {
-    @apply rounded bg-black/30 px-1.5 py-0.5 font-mono text-[13px] text-gold-bright;
+    @apply rounded bg-black/30 px-1.5 py-0.5 font-mono text-[0.82em] text-gold-bright;
   }
 
   .dm-markdown pre {
-    @apply my-3 overflow-x-auto rounded-xl bg-black/30 p-3 text-[13px];
+    @apply my-3 overflow-x-auto rounded-xl bg-black/30 p-3 text-[0.82em];
   }
 
   .dm-markdown pre code {
@@ -143,7 +294,9 @@ body {
   }
 
   .dm-markdown hr {
-    @apply my-5 border-divider;
+    @apply my-6 border-0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--color-gold-dim), transparent);
   }
 
   .dm-markdown a {
@@ -151,19 +304,23 @@ body {
   }
 
   .dm-markdown table {
-    @apply my-3 w-full border-collapse text-sm;
+    @apply my-4 block w-full overflow-x-auto border-collapse font-sans text-[0.85em];
   }
 
   .dm-markdown th,
   .dm-markdown td {
-    @apply border border-divider px-2 py-1 text-left;
+    @apply border border-divider px-2.5 py-1.5 text-left;
+  }
+
+  .dm-markdown th {
+    @apply bg-surface-high font-semibold text-gold-bright;
   }
 }
 
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -171,6 +328,101 @@ body {
   }
 }
 
+@keyframes caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(214 179 106 / 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgb(214 179 106 / 0);
+  }
+}
+
+@keyframes dice-tumble {
+  0% {
+    transform: rotate(0deg) scale(0.9);
+  }
+  50% {
+    transform: rotate(200deg) scale(1.08);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+@keyframes rune-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
 .animate-fade-up {
-  animation: fade-up 180ms ease-out both;
+  animation: fade-up 220ms ease-out both;
+}
+
+.animate-glow {
+  animation: glow 2.2s ease-in-out infinite;
+}
+
+.animate-tumble {
+  animation: dice-tumble 650ms cubic-bezier(0.3, 0.7, 0.4, 1) both;
+}
+
+.animate-orbit {
+  animation: rune-orbit 2.4s linear infinite;
+}
+
+.stream-caret::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  margin-left: 0.15em;
+  vertical-align: -0.15em;
+  border-radius: 2px;
+  background: var(--color-gold);
+  animation: caret 1s steps(1) infinite;
+}
+
+.shimmer-text {
+  background: linear-gradient(90deg, var(--color-muted) 0%, var(--color-gold-bright) 50%, var(--color-muted) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.6s linear infinite;
+}
+
+.pb-safe {
+  padding-bottom: max(0.75rem, var(--safe-bottom));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

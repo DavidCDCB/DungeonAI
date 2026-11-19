@@ -1,6 +1,6 @@
 # Dungeon AI Web
 
-Versión web de **Dungeon AI**, adaptada a escritorio, con **Vite + Vue 3 + TypeScript + Tailwind CSS**. Usa el mismo prompt de Dungeon Master, la memoria persistente `[ESTADO]`, las 5 opciones, el lanzador de dados múltiple y la **voz del navegador**.
+Partidas de rol en español con un **Dungeon Master de IA**, hechas con **Vite + Vue 3 + TypeScript + Tailwind CSS 4**. Narración en streaming, 5 opciones como botones, lanzador de dados con ventaja/desventaja, memoria `[ESTADO]` persistente, voz del navegador y **PWA instalable** que funciona sin conexión. Lista para desplegar en **Vercel** (incluido Vercel Drop).
 
 ## Requisitos
 
@@ -15,159 +15,140 @@ npm install
 npm run dev
 ```
 
-Abre `http://localhost:5173`. La primera vez se abre **Ajustes** porque no hay proveedor configurado.
-
-## Configuración
-
-| Campo | Valor por defecto |
-|---|---|
-| Proveedor | `OpenCode (proxy local)` |
-| API key | vacía; la introduces tú |
-| URL base | `/api/opencode` (proxy de Vite) |
-| Modelo | `claude-haiku-5-5` |
-| Razonamiento | `high` (`low`, `medium`, `high`, `xhigh`, `max`) |
-| Tema | `Alta Fantasía` |
-| Mundo | `Faerûn (Reinos Olvidados)` |
-| Personaje | `Sabrina` |
-| Clase | `Maga` |
-| Raza | `Humana` |
-| Voz | automática (mejor voz española del navegador) |
-
-### Proveedores
-
-El desplegable **Servicio** rellena la URL base y puedes cambiarla por la de cualquier endpoint compatible con OpenAI (la app añade `/chat/completions`):
-
-| Proveedor | URL base |
-|---|---|
-| OpenCode (por defecto) | `/api/opencode` |
-| OpenAI | `https://api.openai.com/v1` |
-| OpenRouter | `https://openrouter.ai/api/v1` |
-| Groq | `https://api.groq.com/openai/v1` |
-| DeepSeek | `https://api.deepseek.com/v1` |
-| Ollama local | `http://localhost:11434/v1` |
-| LM Studio local | `http://localhost:1234/v1` |
-| Personalizado | cualquiera |
-
-La API key se guarda en `localStorage` y viaja como `Authorization`; es opcional en servidores locales (`localhost`, `127.0.0.1`, rangos privados) y en el proxy de OpenCode es obligatoria. La URL base por defecto usa el proxy `/api/opencode` de Vite para evitar CORS. Si pones una URL directa, el servidor del modelo debe permitir CORS. En producción necesitas un proxy inverso equivalente para `/api/opencode`.
+Abre `http://localhost:5173`. La primera vez se abre **Ajustes → Conexión** porque no hay proveedor configurado. Usa **Probar conexión** para validar URL, key y modelo antes de jugar.
 
 ## Funciones
 
-- Chat de varios mensajes con historial persistente en `localStorage`.
-- Respuestas del DM con Markdown; las 5 opciones se muestran como botones solo en la última respuesta y desaparecen al responder.
-- Memoria `[ESTADO]` persistente, editable en Ajustes y en el panel lateral; se reinyecta en cada turno.
-- Marcador `[TIRADA]` y detección de peticiones de tirada; si el modelo olvida las opciones, la app pide completarlas automáticamente.
-- Lanzador de dados con varias tiradas, tipos d4–d100, cantidad y bono; confirmación antes de enviar; configuración conservada hasta que se lanzan.
-- Historial completo: no hay límite de 40 mensajes. Se envía todo lo que cabe en la ventana del modelo; si no cabe, se descartan los mensajes más antiguos. La app reserva 64k tokens para la salida.
-- Contador de tokens sin porcentaje ni límite visible: muestra contexto y razonamiento del último turno, y el desglose exacto al pulsarlo.
-- TTS del navegador con selección de voz, pausa/reanudación y lectura automática.
-- Exportación e importación de todo el progreso en un único JSON.
-- Layout de escritorio con panel lateral de sesión, campaña, memoria y voz; adaptación para pantallas menores.
+### Partida
+- **Streaming:** el texto del DM aparece mientras se escribe. Mientras tanto se ocultan el bloque `[ESTADO]` y las opciones a medio escribir. Un indicador muestra la fase (consultando notas, pensando, escribiendo), el tiempo y los tokens de razonamiento. **Detener** cancela el turno.
+- **Opciones** como botones numerados (atajos `1`–`5`). La opción 🃏 se destaca como *comodín* y cualquier opción se puede editar antes de enviarla.
+- **Regenerar** la última respuesta del DM; si falla, se restaura la anterior.
+- **Editar** cualquier mensaje tuyo: deshace desde ese punto, devuelve el texto al cuadro y la memoria vuelve a como estaba. El aviso trae **Deshacer**.
+- **Comandos OOC** desde el menú del compositor: hoja, inventario, misiones, resumen, «lanza por mí», cambiar de escena.
+- El borrador se guarda solo. Las campañas largas se paginan (60 mensajes, «Mostrar anteriores»).
 
-## Progreso: exportar e importar
+### Dados
+- Cuando el DM pide una tirada, la app lee la notación (`1d20 + 5`, `1d8`, «con ventaja», «6 grupos de 4d6 descartando el más bajo») y ofrece botones **Lanzar 1d20 + 5**.
+- Lanzador con d4–d100, cantidad, modificador, **ventaja/desventaja** y **descartar el menor**, varias tiradas por mensaje y sugerencias del DM.
+- La tirada se envía en el mismo momento en que se lanza. La animación es solo visual, así que cerrar el diálogo no permite repetirla. Los resultados se muestran como tarjetas, con el dado descartado tachado y el **crítico** o la **pifia** resaltados.
 
-En **Ajustes → Progreso** hay dos botones:
+### Memoria y panel
+- Panel lateral (escritorio) o cajón (móvil) con personaje, **escena**, **combate activo**, hoja, inventario, dinero, condiciones, misiones y PNJs.
+- La sección **Trama (solo DM)** está oculta por defecto (spoilers); se puede mostrar en *Lectura y voz*.
+- Editor de memoria dedicado. Cada turno guarda una instantánea de la memoria, lo que permite deshacer y regenerar sin corromperla.
 
-- **Exportar JSON** descarga `dungeon-ai-progreso-AAAA-MM-DD.json` con historial, memoria `[ESTADO]`, contador de tokens, lanzador de dados y todos los ajustes, **incluida la API key**.
-- **Importar JSON** reemplaza la partida actual tras pedir confirmación. Acepta archivos de la misma versión o anteriores y valida el formato; los mensajes o ajustes inválidos se normalizan o se descartan.
+### Lectura y voz
+- Tamaño de texto (pequeño/normal/grande) y letra de narración (Literata «libro» o Inter «moderna»). Letra capital en cada escena.
+- Voz del navegador con selector, **Probar**, velocidad y lectura automática. El texto se lee por fragmentos para evitar el corte de ~15 s de Chrome con voces largas.
 
-Formato del archivo:
+### Conexión y contexto
+- Proveedores OpenAI-compatibles (OpenCode, OpenAI, OpenRouter, Groq, DeepSeek, Ollama, LM Studio, personalizado).
+- **Ventana de contexto** configurable (32k–1M). Si el modelo informa una ventana menor, la app la detecta, reintenta y la guarda.
+- Reintentos automáticos: sin `stream_options`, sin streaming, sin `reasoning_effort` o con menos razonamiento, según lo que soporte el proveedor.
+- Contador de tokens sin porcentaje: contexto y razonamiento del último turno, con el desglose al pulsarlo.
+
+### Datos
+- Autoguardado en `localStorage`, con aviso si el almacenamiento se llena y medidor de uso en *Ajustes → Datos*.
+- **Exportar/Importar** la partida en JSON. Por defecto **sin la API key**; al importar un archivo sin key se conserva la de este navegador.
+
+### Accesibilidad
+- Diálogos con foco atrapado, `Esc` y restauración del foco; región `aria-live` para avisar de respuestas nuevas; enlace «saltar al compositor»; respeta `prefers-reduced-motion`.
+- Atajos: `1`–`5` opciones · `D` dados · `/` escribir · `Esc` cerrar.
+
+## PWA
+
+- Instalable (botón **Instalar app** en la cabecera o en *Ajustes → Datos*; en iOS: Compartir → «Añadir a pantalla de inicio»).
+- El service worker precachea la app, las fuentes (subconjunto latino, locales) y los iconos: abre sin conexión. Las llamadas al modelo (`/api/…`) nunca se cachean.
+- Aviso de **nueva versión** con botón *Actualizar*; indicador *Sin conexión* en la cabecera.
+- Iconos generados desde `public/favicon.svg` con `npm run icons`.
+
+## Desplegar en Vercel
+
+`vercel.json` define el proxy `/api/opencode` → `https://opencode.ai/inference/go/openai/v1` como **rewrite externo** (OpenCode no permite CORS), las cabeceras de seguridad (CSP, `X-Frame-Options`, etc.) y la caché correcta de `sw.js`, el manifest y `/assets`. No hace falta ninguna función serverless.
+
+### Opción A — Vercel Drop sin compilar en Vercel (funciona sin cuenta)
+
+```powershell
+npm run build
+```
+
+Arrastra la carpeta **`dist/`** a [vercel.com/drop](https://vercel.com/drop). El build copia en `dist/vercel.json` el proxy y las cabeceras (sin las opciones de build), así que `dist/` es un sitio estático completo. Sin cuenta, el despliegue es temporal hasta que lo reclames.
+
+### Opción B — Vercel compila el proyecto (requiere cuenta)
+
+Arrastra la carpeta del proyecto (o súbela a Git y conéctala). Vercel detecta Vite y usa `npm run build` y `dist` según `vercel.json`. `.vercelignore` excluye `node_modules` y `dist`.
+
+### Notas de producción
+- El CDN de Vercel espera hasta **120 s** al primer byte de un rewrite externo. Deja el **streaming activado** (por defecto): sin él, el razonamiento `max` puede superar ese límite.
+- La API key la pone cada jugador en su navegador y viaja al proveedor a través del proxy; no se guarda en el servidor.
+- Desde una página HTTPS, el navegador bloquea URLs `http://` que no sean `localhost`. Ollama o LM Studio funcionan en `http://localhost` del propio equipo.
+
+## Prompt del Dungeon Master
+
+`src/prompts/dungeon_master.md` define el contrato entre el DM y la app:
+
+- Orden de cada respuesta: narración → `[ESTADO]…[/ESTADO]` → cierre. Una petición de tirada (`[TIRADA]` con notación completa) va al final de la narración; si no hay tirada, van 5 opciones en primera persona y una con 🃏.
+- Cada sección de `[ESTADO]` reemplaza entera a la guardada. `Combate:` se omite al terminar el combate, y `Trama (solo DM)` es secreta.
+- Documenta el formato exacto de los mensajes del lanzador de dados y avisa al modelo de que su historial le llega sin `[ESTADO]` ni opciones (para que no imite el recorte).
+- Se interpolan `{{tema}}`, `{{mundo}}`, `{{personaje}}`/`{{nombre}}`, `{{clase}}` y `{{raza}}`. La app añade la memoria vigente y un recordatorio de cierre (`src/lib/prompt.ts`).
+
+`tests/prompt.test.ts` comprueba que el prompt y el parser encajan: la plantilla `[ESTADO]` produce todas las secciones, los ejemplos de dados coinciden con lo que genera el lanzador, los ejemplos de petición producen botones y los comandos del menú están documentados.
+
+## Exportar e importar
 
 ```json
 {
   "app": "dungeon-ai-web",
   "version": 1,
   "exportedAt": "2026-01-01T00:00:00.000Z",
-  "settings": { "apiKey": "…", "baseUrl": "…", "model": "…" },
-  "messages": [{ "role": "user", "content": "…" }],
-  "state": "[ESTADO]…",
+  "settings": { "apiKey": "", "baseUrl": "…", "model": "…", "stream": true, "contextWindow": 1000000 },
+  "messages": [{ "role": "assistant", "content": "…", "memory": "Escena: …" }],
+  "state": "Escena: …",
   "usage": { "prompt": 0, "completion": 0, "total": 0 },
-  "dice": [{ "die": "d20", "count": "1", "bonus": "0" }]
+  "dice": [{ "die": "d20", "count": "1", "bonus": "5", "mode": "advantage" }]
 }
 ```
 
-El archivo contiene la API key en texto plano: guárdalo donde no se comparta.
+Los archivos de versiones anteriores siguen siendo compatibles (`memory` y `mode` son opcionales).
 
-## Voz
+## Scripts
 
-La app usa la **Web Speech API** del navegador:
-
-- No requiere servidor ni key.
-- Toma las voces instaladas en el sistema/navegador.
-- La voz automática prioriza español de Colombia, Estados Unidos, México y España, y prefiere voces naturales/online.
-- La pausa y reanudación usan `speechSynthesis.pause()` y `resume()`.
-- Si el navegador bloquea la lectura automática, toca el altavoz del mensaje.
-
-## Contador de tokens
-
-La barra inferior muestra, por ejemplo:
-
-```text
-Contexto: 12k tokens
-Razonamiento: 0 tokens
-```
-
-No hay `/1M` ni porcentaje. El desglose muestra entrada, salida, razonamiento, total, caché, mensajes enviados y modelo.
-
-## Prompt
-
-El prompt está en `src/prompts/dungeon_master.md`, copiado desde la app Android. Se interpolan:
-
-- `{{tema}}`
-- `{{mundo}}`
-- `{{personaje}}` / `{{nombre}}`
-- `{{clase}}`
-- `{{raza}}`
-
-La app añade la memoria vigente y el recordatorio de cierre en cada turno.
-
-## Build y preview
-
-```powershell
-npm run build
-npm run preview
-```
-
-`vite.config.ts` configura el proxy de OpenCode tanto en `server` como en `preview`. Para publicar en un servidor estático necesitas replicar ese proxy o mover el cliente API a un backend.
-
-## Pruebas
-
-```powershell
-npm test
-```
-
-Cubren parser de opciones, memoria, dados, presupuesto de contexto, limpieza para TTS y mensajes.
+| Comando | Qué hace |
+|---|---|
+| `npm run dev` | Servidor de desarrollo con proxy de OpenCode |
+| `npm run build` | Typecheck + build de producción (PWA y `dist/vercel.json`) |
+| `npm run preview` | Sirve `dist/` con el proxy de Vite |
+| `npm test` | Pruebas (Vitest) |
+| `npm run icons` | Regenera los iconos PWA desde `public/favicon.svg` |
 
 ## Estructura
 
 ```text
 src/
-├─ App.vue
+├─ App.vue                    layout, atajos de teclado, nueva partida
 ├─ components/
-│  ├─ ChatBubble.vue
-│  ├─ SettingsDrawer.vue
-│  ├─ DiceModal.vue
-│  └─ ContextModal.vue
-├─ composables/useGame.ts
+│  ├─ AppDialog.vue           base de diálogos y cajones accesibles
+│  ├─ AppHeader.vue · AppLogo.vue
+│  ├─ ChatLog.vue             lista, scroll durante el streaming, paginación
+│  ├─ DmMessage.vue · PlayerMessage.vue · OptionList.vue · ThinkingIndicator.vue
+│  ├─ Composer.vue            entrada, banner de tirada, comandos, estado
+│  ├─ DiceModal.vue · DiceRollCard.vue
+│  ├─ SidePanel.vue · MemoryDialog.vue · ContextModal.vue
+│  ├─ SettingsDrawer.vue      pestañas Conexión / Campaña / Lectura y voz / Datos
+│  └─ ConfirmHost.vue · ToastHost.vue · EmptyState.vue
+├─ composables/
+│  ├─ useGame.ts              estado de la partida, turnos, dados, voz
+│  ├─ usePwa.ts · useToasts.ts · useConfirm.ts · useDialogStack.ts
 ├─ lib/
-│  ├─ api.ts
-│  ├─ contextBudget.ts
-│  ├─ dice.ts
-│  ├─ gameState.ts
-│  ├─ messages.ts
-│  ├─ options.ts
-│  ├─ prompt.ts
-│  ├─ providers.ts
-│  ├─ storage.ts
-│  ├─ transfer.ts
-│  └─ ttsText.ts
+│  ├─ api.ts                  cliente OpenAI-compatible con streaming y reintentos
+│  ├─ sse.ts                  parser SSE y lectura de errores de contexto
+│  ├─ dice.ts                 tiradas, modos, sugerencias y lectura de resultados
+│  ├─ gameState.ts            memoria [ESTADO], secciones e instantáneas
+│  ├─ messages.ts · options.ts · markdown.ts · ttsText.ts
+│  ├─ prompt.ts · commands.ts · providers.ts · contextBudget.ts
+│  └─ storage.ts · transfer.ts · format.ts
 ├─ prompts/dungeon_master.md
 └─ types.ts
-tests/
+tests/                         Vitest: lógica, parser y contrato con el prompt
+vercel.json · pwa-assets.config.ts · .vercelignore
 ```
-
-## Notas
-
-- La voz del navegador no requiere servidor ni API key; usa las voces instaladas en el sistema.
-- No hay integración con motores TTS locales o servidores externos.
-- En navegadores con políticas de autoplay estrictas, la lectura automática puede requerir un toque en el altavoz del mensaje.
-- La app web no incluye el orbe ni la wake word de la versión Android; el resto del flujo de juego está portado.

@@ -1,5 +1,14 @@
-import type { ChatMessage, DiceGroup, Role, Settings, TokenUsage } from '../types'
+import type {
+  ChatMessage,
+  DiceGroup,
+  ReadingFont,
+  Role,
+  Settings,
+  TextSize,
+  TokenUsage,
+} from '../types'
 import { DEFAULT_SETTINGS, REASONING_LEVELS } from '../types'
+import { normalizeDiceGroups } from './dice'
 
 export const PROGRESS_APP = 'dungeon-ai-web'
 export const PROGRESS_VERSION = 1
@@ -9,6 +18,7 @@ const MAX_MESSAGES = 5000
 export interface ProgressMessage {
   role: Role
   content: string
+  memory?: string
 }
 
 export interface ProgressFile {
@@ -22,23 +32,47 @@ export interface ProgressFile {
   dice: DiceGroup[]
 }
 
+export interface SerializeOptions {
+  /** Incluir la API key en el archivo (texto plano). */
+  includeApiKey?: boolean
+}
+
 export function serializeProgress(
   settings: Settings,
   messages: ChatMessage[],
   state: string,
   usage: TokenUsage | null,
   dice: DiceGroup[],
+  options: SerializeOptions = {},
 ): ProgressFile {
+  const includeApiKey = options.includeApiKey ?? true
   return {
     app: PROGRESS_APP,
     version: PROGRESS_VERSION,
     exportedAt: new Date().toISOString(),
-    settings: { ...settings },
-    messages: messages.map(({ role, content }) => ({ role, content })),
+    settings: { ...settings, apiKey: includeApiKey ? settings.apiKey : '' },
+    messages: messages.map((message) => {
+      const item: ProgressMessage = { role: message.role, content: message.content }
+      if (message.role === 'assistant' && typeof message.memory === 'string') {
+        item.memory = message.memory
+      }
+      return item
+    }),
     state,
     usage,
     dice: dice.map((group) => ({ ...group })),
   }
+}
+
+export function progressFileName(settings: Settings, date = new Date()): string {
+  const slug = settings.character
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+  const day = date.toISOString().slice(0, 10)
+  return `dungeon-ai-${slug || 'partida'}-${day}.json`
 }
 
 export function downloadProgress(progress: ProgressFile): void {
@@ -46,13 +80,12 @@ export function downloadProgress(progress: ProgressFile): void {
   const blob = new Blob([json], { type: 'application/json;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
-  const date = new Date().toISOString().slice(0, 10)
   anchor.href = url
-  anchor.download = `dungeon-ai-progreso-${date}.json`
+  anchor.download = progressFileName(progress.settings)
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()
-  URL.revokeObjectURL(url)
+  setTimeout(() => URL.revokeObjectURL(url), 1_000)
 }
 
 export async function parseProgressFile(file: File): Promise<ProgressFile> {
@@ -88,10 +121,16 @@ export function parseProgressJson(text: string): ProgressFile {
         (message.role === 'user' || message.role === 'assistant') &&
         typeof message.content === 'string',
     )
-    .map((message: any) => ({
-      role: message.role as Role,
-      content: String(message.content),
-    }))
+    .map((message: any) => {
+      const item: ProgressMessage = {
+        role: message.role as Role,
+        content: String(message.content),
+      }
+      if (message.role === 'assistant' && typeof message.memory === 'string') {
+        item.memory = message.memory
+      }
+      return item
+    })
 
   return {
     app: PROGRESS_APP,
@@ -101,15 +140,26 @@ export function parseProgressJson(text: string): ProgressFile {
     messages,
     state: typeof raw.state === 'string' ? raw.state : '',
     usage: normalizeUsage(raw.usage),
-    dice: normalizeDice(raw.dice),
+    dice: normalizeDiceGroups(raw.dice),
   }
 }
 
-function normalizeSettings(value: any): Settings {
+const TEXT_SIZES: TextSize[] = ['sm', 'md', 'lg']
+const READING_FONTS: ReadingFont[] = ['serif', 'sans']
+
+export function normalizeSettings(value: any): Settings {
   const raw = value && typeof value === 'object' ? value : {}
   const text = (key: keyof Settings, fallback: string): string => {
     const candidate = raw[key]
     return typeof candidate === 'string' ? candidate : fallback
+  }
+  const bool = (key: keyof Settings, fallback: boolean): boolean => {
+    const candidate = raw[key]
+    return typeof candidate === 'boolean' ? candidate : fallback
+  }
+  const number = (key: keyof Settings, fallback: number, min: number, max: number): number => {
+    const candidate = Number(raw[key])
+    return Number.isFinite(candidate) && candidate >= min && candidate <= max ? candidate : fallback
   }
   const reasoning = REASONING_LEVELS.includes(raw.reasoning)
     ? raw.reasoning
@@ -125,7 +175,17 @@ function normalizeSettings(value: any): Settings {
     characterClass: text('characterClass', DEFAULT_SETTINGS.characterClass),
     race: text('race', DEFAULT_SETTINGS.race),
     browserVoice: text('browserVoice', ''),
-    autoRead: typeof raw.autoRead === 'boolean' ? raw.autoRead : true,
+    autoRead: bool('autoRead', DEFAULT_SETTINGS.autoRead),
+    stream: bool('stream', DEFAULT_SETTINGS.stream),
+    contextWindow: Math.round(
+      number('contextWindow', DEFAULT_SETTINGS.contextWindow, 4_000, 10_000_000),
+    ),
+    speechRate: number('speechRate', DEFAULT_SETTINGS.speechRate, 0.5, 2),
+    textSize: TEXT_SIZES.includes(raw.textSize) ? raw.textSize : DEFAULT_SETTINGS.textSize,
+    readingFont: READING_FONTS.includes(raw.readingFont)
+      ? raw.readingFont
+      : DEFAULT_SETTINGS.readingFont,
+    showSecrets: bool('showSecrets', DEFAULT_SETTINGS.showSecrets),
   }
 }
 
@@ -148,16 +208,4 @@ function normalizeUsage(value: any): TokenUsage | null {
     estimated: Boolean(value.estimated),
     sentMessages: number(value.sentMessages),
   }
-}
-
-function normalizeDice(value: any): DiceGroup[] {
-  if (!Array.isArray(value)) return []
-  return value
-    .slice(0, 10)
-    .filter((group: any) => group && typeof group.die === 'string')
-    .map((group: any) => ({
-      die: String(group.die),
-      count: typeof group.count === 'string' ? group.count : String(group.count ?? '1'),
-      bonus: typeof group.bonus === 'string' ? group.bonus : String(group.bonus ?? '0'),
-    }))
 }

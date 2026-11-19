@@ -1,37 +1,56 @@
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import type {
   ChatMessage,
   DiceGroup,
   DiceRequest,
+  DiceRoll,
   Settings,
   TokenUsage,
+  TurnPhase,
 } from '../types'
 import { DEFAULT_SETTINGS } from '../types'
-import { ApiError, chatWithFallback, requestMissingOptions } from '../lib/api'
-import { messageFor, rollDice, joinWithAnd, notation } from '../lib/dice'
-import { mergeState } from '../lib/gameState'
+import {
+  ApiError,
+  CancelledError,
+  chatWithFallback,
+  requestMissingOptions,
+  type StreamProgress,
+} from '../lib/api'
+import { messageFor, rollRequest, suggestDice, toGroup } from '../lib/dice'
+import { memoryAfter, mergeState } from '../lib/gameState'
 import {
   createMessage,
+  newMessageId,
   prepareRepairContent,
+  streamingPreview,
 } from '../lib/messages'
 import { INSTRUCCION_REPARACION, buildSystemPrompt } from '../lib/prompt'
 import { requiresApiKey } from '../lib/providers'
+import { isContextError } from '../lib/sse'
 import { downloadProgress, parseProgressFile, serializeProgress } from '../lib/transfer'
-import { cleanForSpeech } from '../lib/ttsText'
+import { chunkForSpeech, cleanForSpeech } from '../lib/ttsText'
+import { formatTokens } from '../lib/format'
 import {
   clearDiceGroups,
   clearGameStorage,
   loadDiceGroups,
+  loadDraft,
   loadMessages,
   loadSettings,
   loadState,
   loadUsage,
   saveDiceGroups,
+  saveDraft,
   saveMessages,
   saveSettings,
   saveState,
   saveUsage,
 } from '../lib/storage'
+import { useToasts } from './useToasts'
+
+export type SettingsTab = 'connection' | 'campaign' | 'reading' | 'data'
+
+const { push: toast } = useToasts()
 
 const settings = reactive<Settings>(loadSettings(DEFAULT_SETTINGS))
 const messages = ref<ChatMessage[]>(loadMessages())
@@ -39,219 +58,502 @@ const gameState = ref(loadState())
 const usage = ref<TokenUsage | null>(loadUsage())
 
 const loading = ref(false)
-const escribiendo = ref(false)
-const draft = ref('')
+const phase = ref<TurnPhase>('idle')
+const turnStartedAt = ref(0)
+const pendingId = ref<string | null>(null)
+const streamText = ref('')
+const reasoningChars = ref(0)
+const draft = ref(loadDraft())
 const errorMessage = ref('')
+const errorKind = ref<'error' | 'cancelled'>('error')
+const storageFailed = ref(false)
+const announcement = ref('')
 
 const settingsOpen = ref(false)
+const settingsTab = ref<SettingsTab>('connection')
 const diceOpen = ref(false)
+const diceResults = ref<DiceRoll[] | null>(null)
 const contextOpen = ref(false)
+const memoryOpen = ref(false)
+const panelOpen = ref(false)
 
 const defaultDice = (): DiceGroup[] => [{ die: 'd20', count: '1', bonus: '0' }]
 const diceGroups = ref<DiceGroup[]>(loadDiceGroups() ?? defaultDice())
 
 const scrollTarget = ref<string | null>(null)
 const scrollNonce = ref(0)
+const streamNonce = ref(0)
+const composerFocusNonce = ref(0)
 
 const browserVoices = ref<SpeechSynthesisVoice[]>([])
-
 const speakingId = ref<string | null>(null)
 const ttsPaused = ref(false)
 const ttsError = ref('')
 
-let utterance: SpeechSynthesisUtterance | null = null
+let abortController: AbortController | null = null
 let speechToken = 0
 let initialized = false
+let draftTimer: ReturnType<typeof setTimeout> | null = null
+let pendingProgress: StreamProgress | null = null
+let progressFrame = 0
+
+// ---------------------------------------------------------------------------
+// Derivados
+// ---------------------------------------------------------------------------
+
+const lastMessage = computed(() => messages.value[messages.value.length - 1])
 
 const lastAssistant = computed(() =>
   [...messages.value].reverse().find((message) => message.role === 'assistant'),
 )
 
-const diceAvailable = computed(() => {
-  const last = messages.value[messages.value.length - 1]
+const diceRequested = computed(() => {
+  const last = lastMessage.value
   return Boolean(last && last.role === 'assistant' && last.diceRequest)
 })
 
+const diceSuggestions = computed(() =>
+  diceRequested.value && lastMessage.value ? suggestDice(lastMessage.value.display) : [],
+)
+
+const visibleOptions = computed(() => {
+  const last = lastMessage.value
+  if (loading.value || !last || last.role !== 'assistant' || last.diceRequest) return []
+  return last.options
+})
+
 const hasMessages = computed(() => messages.value.length > 0)
+const awaitingReply = computed(
+  () => !loading.value && lastMessage.value?.role === 'user',
+)
+
+const configured = computed(
+  () => !requiresApiKey(settings.baseUrl) || Boolean(settings.apiKey.trim()),
+)
+
+/** Mensaje provisional del DM mientras escribe (mismo id que tendrá el definitivo). */
+const streamingMessage = computed<ChatMessage | null>(() => {
+  if (!loading.value || !pendingId.value) return null
+  return createMessage('assistant', streamingPreview(streamText.value), pendingId.value)
+})
+
+const displayMessages = computed(() =>
+  streamingMessage.value ? [...messages.value, streamingMessage.value] : messages.value,
+)
 
 const contextTokens = computed(() => usage.value?.total ?? 0)
 const reasoningTokens = computed(() => usage.value?.reasoning ?? 0)
+
+watch(draft, (value) => {
+  if (draftTimer) clearTimeout(draftTimer)
+  draftTimer = setTimeout(() => saveDraft(value), 300)
+})
+
+// ---------------------------------------------------------------------------
+// Persistencia
+// ---------------------------------------------------------------------------
+
+function reportStorage(ok: boolean) {
+  if (ok) {
+    storageFailed.value = false
+    return
+  }
+  if (!storageFailed.value) {
+    toast('No se pudo guardar la partida: el almacenamiento del navegador está lleno. Exporta tu progreso.', {
+      tone: 'error',
+      timeout: 0,
+      action: { label: 'Exportar', run: () => exportProgress() },
+    })
+  }
+  storageFailed.value = true
+}
+
+function persistMessages() {
+  reportStorage(saveMessages(messages.value))
+}
+
+function persistGame() {
+  reportStorage(
+    [saveMessages(messages.value), saveState(gameState.value), saveUsage(usage.value)].every(Boolean),
+  )
+}
+
+function persistSettings() {
+  reportStorage(saveSettings(settings))
+}
+
+// ---------------------------------------------------------------------------
+// Utilidades de UI
+// ---------------------------------------------------------------------------
 
 function requestScroll(target: string) {
   scrollTarget.value = target
   scrollNonce.value++
 }
 
-function persistMessages() {
-  saveMessages(messages.value)
+function focusComposer() {
+  composerFocusNonce.value++
+}
+
+function announce(text: string) {
+  announcement.value = ''
+  setTimeout(() => {
+    announcement.value = text
+  }, 50)
+}
+
+function openSettings(tab: SettingsTab = 'connection') {
+  settingsTab.value = tab
+  settingsOpen.value = true
+}
+
+function ensureConfigured(): boolean {
+  if (configured.value) return true
+  openSettings('connection')
+  toast('Conecta un proveedor del modelo para jugar.', { tone: 'warning' })
+  return false
 }
 
 function systemPrompt(): string {
   return buildSystemPrompt(settings, gameState.value)
 }
 
-function showOptions(index: number): boolean {
-  const message = messages.value[index]
-  return Boolean(
-    message &&
-      index === messages.value.length - 1 &&
-      message.role === 'assistant' &&
-      !message.diceRequest &&
-      message.options.length > 0,
-  )
-}
-
 function friendlyError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.code === 401) {
-      return 'La API key fue rechazada. Revísala en Ajustes.'
+    const text = error.message
+    if (error.code === 401 || error.code === 403) {
+      return 'La API key fue rechazada. Revísala en Ajustes → Conexión.'
+    }
+    if (error.code === 404) {
+      return 'No se encontró el endpoint o el modelo. Revisa la URL base y el nombre del modelo.'
     }
     if (error.code === 429) {
-      return 'El modelo está saturado. Espera un momento e intenta de nuevo.'
+      return 'El modelo está saturado o alcanzaste tu límite. Espera un momento e intenta de nuevo.'
     }
-    if (/tardó demasiado/i.test(error.message)) {
-      return 'El modelo tardó demasiado. Con razonamiento max puede pasar; prueba con xhigh o high.'
+    if (error.code === 408 || error.code === 504 || error.code === 524 || /tardó demasiado/i.test(text)) {
+      return settings.stream
+        ? 'El modelo tardó demasiado. Con razonamiento max puede pasar; prueba con xhigh o high.'
+        : 'El modelo tardó demasiado. Activa el streaming en Ajustes o baja el razonamiento.'
     }
-    if (/context|longitud|too long|maximum context/i.test(error.message)) {
-      return 'El historial supera la ventana del modelo. Recorta la partida o empieza una nueva.'
+    if (isContextError(text)) {
+      return 'El historial supera la ventana del modelo. Reduce la ventana de contexto en Ajustes → Conexión.'
     }
-    return error.message
+    if (error.code >= 500) {
+      return `El proveedor falló (HTTP ${error.code}). Reintenta en un momento.`
+    }
+    if (/No se pudo contactar/i.test(text)) {
+      return 'No se pudo contactar al modelo. Revisa la URL base, tu conexión o si el servidor permite CORS.'
+    }
+    return text
   }
   return 'No se pudo contactar al modelo. Revisa la key y la conexión.'
 }
 
-async function generateResponse() {
-  if (loading.value) return
-  if (requiresApiKey(settings.baseUrl) && !settings.apiKey.trim()) {
-    settingsOpen.value = true
-    return
+// ---------------------------------------------------------------------------
+// Turnos
+// ---------------------------------------------------------------------------
+
+function applyProgress() {
+  progressFrame = 0
+  if (!pendingProgress || !loading.value) return
+  const progress = pendingProgress
+  pendingProgress = null
+  streamText.value = progress.content
+  reasoningChars.value = progress.reasoningChars
+  if (phase.value !== 'repairing') {
+    phase.value = progress.content
+      ? 'writing'
+      : progress.reasoningChars > 0
+        ? 'thinking'
+        : 'waiting'
   }
-  loading.value = true
-  escribiendo.value = false
+  streamNonce.value++
+}
+
+function onProgress(progress: StreamProgress) {
+  pendingProgress = progress
+  if (progressFrame) return
+  progressFrame =
+    typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame(applyProgress)
+      : (setTimeout(applyProgress, 16) as unknown as number)
+}
+
+function isOffline(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false && requiresApiKey(settings.baseUrl)
+}
+
+/** Pide la respuesta del DM al último mensaje del jugador. Devuelve si tuvo éxito. */
+async function generateResponse(): Promise<boolean> {
+  if (loading.value) return false
+  if (!ensureConfigured()) return false
+  const last = lastMessage.value
+  if (!last || last.role !== 'user') return false
+  if (isOffline()) {
+    errorKind.value = 'error'
+    errorMessage.value = 'Estás sin conexión. Tu partida está guardada; reintenta cuando vuelva la red.'
+    return false
+  }
+
+  stopSpeech()
+  const controller = new AbortController()
+  abortController = controller
+  const id = newMessageId()
+  pendingId.value = id
+  streamText.value = ''
+  reasoningChars.value = 0
+  pendingProgress = null
+  phase.value = 'waiting'
+  turnStartedAt.value = Date.now()
   errorMessage.value = ''
+  loading.value = true
 
   const prompt = systemPrompt()
   const history = [...messages.value]
   try {
-    const result = await chatWithFallback(settings, prompt, history)
-    let assistant = createMessage('assistant', result.content)
+    const result = await chatWithFallback(settings, prompt, history, {
+      stream: settings.stream,
+      signal: controller.signal,
+      onProgress,
+    })
+    applyProgress()
+    if (result.contextWindow) {
+      settings.contextWindow = result.contextWindow
+      persistSettings()
+      toast(`Ajusté la ventana de contexto a ${formatTokens(result.contextWindow)} tokens según el modelo.`, {
+        tone: 'info',
+      })
+    }
 
+    let assistant = createMessage('assistant', result.content, id)
     if (!assistant.options.length && !assistant.diceRequest) {
+      phase.value = 'repairing'
       try {
-        const repairHistory = [
-          ...history,
-          assistant,
-          createMessage('user', INSTRUCCION_REPARACION),
-        ]
-        const repairContent = await requestMissingOptions(settings, prompt, repairHistory)
+        const repairHistory = [...history, assistant, createMessage('user', INSTRUCCION_REPARACION)]
+        const repairContent = await requestMissingOptions(settings, prompt, repairHistory, controller.signal)
         if (repairContent) {
-          const repair = createMessage('assistant', repairContent)
-          const repaired = prepareRepairContent(assistant, repair)
+          const repaired = prepareRepairContent(assistant, createMessage('assistant', repairContent))
           if (repaired) assistant = repaired
         }
       } catch (repairError) {
+        if (repairError instanceof CancelledError) throw repairError
         console.warn('No se pudieron completar las opciones', repairError)
       }
     }
 
+    const memory = mergeState(gameState.value, assistant.state)
+    assistant = { ...assistant, memory }
     messages.value = [...messages.value, assistant]
-    gameState.value = mergeState(gameState.value, assistant.state)
+    gameState.value = memory
     usage.value = result.usage
-    persistMessages()
-    saveState(gameState.value)
-    saveUsage(usage.value)
-    requestScroll(assistant.id)
-    if (settings.autoRead) {
-      void speak(assistant, true)
-    }
+    persistGame()
+    if (!result.streamed) requestScroll(assistant.id)
+    announce(
+      assistant.diceRequest
+        ? 'El Dungeon Master pide una tirada.'
+        : 'El Dungeon Master ha respondido.',
+    )
+    if (settings.autoRead) speak(assistant, true)
+    return true
   } catch (error) {
-    errorMessage.value = friendlyError(error)
+    if (error instanceof CancelledError) {
+      errorKind.value = 'cancelled'
+      errorMessage.value = 'Cancelaste el turno. Puedes reintentarlo o editar tu mensaje.'
+    } else {
+      errorKind.value = 'error'
+      errorMessage.value = friendlyError(error)
+    }
+    return false
   } finally {
+    if (progressFrame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(progressFrame)
+    progressFrame = 0
+    pendingProgress = null
     loading.value = false
+    phase.value = 'idle'
+    pendingId.value = null
+    streamText.value = ''
+    abortController = null
   }
 }
 
-async function send(text: string) {
-  if (loading.value) return
+function cancelTurn() {
+  abortController?.abort()
+}
+
+async function send(text: string): Promise<boolean> {
+  if (loading.value) return false
   const clean = text.trim()
-  if (!clean) return
-  if (requiresApiKey(settings.baseUrl) && !settings.apiKey.trim()) {
-    settingsOpen.value = true
-    return
-  }
+  if (!clean) return false
+  if (!ensureConfigured()) return false
+  stopSpeech()
   const userMessage = createMessage('user', clean)
   messages.value = [...messages.value, userMessage]
+  errorMessage.value = ''
   persistMessages()
   requestScroll('bottom')
-  await generateResponse()
+  return generateResponse()
 }
 
 function startAdventure() {
   if (loading.value) return
-  void send(`<Comienza la campaña. Presenta la escena inicial para ${settings.character}.>`)
+  if (!ensureConfigured()) return
+  void send(`<Comienza la campaña de ${settings.character} siguiendo el protocolo de inicio.>`)
+}
+
+function retry() {
+  if (lastMessage.value?.role === 'user') void generateResponse()
+}
+
+/** Vuelve a pedir la última respuesta del DM. Si falla, restaura la anterior. */
+async function regenerate() {
+  if (loading.value) return
+  const last = lastMessage.value
+  if (!last || last.role !== 'assistant') return
+  const previousState = gameState.value
+  const remaining = messages.value.slice(0, -1)
+  messages.value = remaining
+  gameState.value = memoryAfter(remaining)
+  persistGame()
+  const ok = await generateResponse()
+  if (!ok) {
+    messages.value = [...messages.value, last]
+    gameState.value = previousState
+    persistGame()
+    errorMessage.value = ''
+    toast('Se restauró la respuesta anterior.', { tone: 'info' })
+  }
+}
+
+/**
+ * Elimina un mensaje del jugador y todo lo posterior, y devuelve su texto al
+ * cuadro de escritura. Se puede deshacer desde el aviso.
+ */
+function editMessage(id: string) {
+  if (loading.value) return
+  const index = messages.value.findIndex((message) => message.id === id)
+  const target = messages.value[index]
+  if (index === -1 || target.role !== 'user') return
+  const removed = messages.value.slice(index)
+  const previousState = gameState.value
+  const previousDraft = draft.value
+  const remaining = messages.value.slice(0, index)
+  stopSpeech()
+  messages.value = remaining
+  gameState.value = memoryAfter(remaining)
+  errorMessage.value = ''
+  persistGame()
+  draft.value = target.content
+  focusComposer()
+  const count = removed.length
+  toast(count > 1 ? `Se deshicieron ${count} mensajes. Edita tu acción.` : 'Edita tu acción y envíala de nuevo.', {
+    action: {
+      label: 'Deshacer',
+      run: () => {
+        if (loading.value || messages.value.length !== remaining.length) {
+          toast('Ya no se puede deshacer: la partida avanzó.', { tone: 'warning' })
+          return
+        }
+        messages.value = [...messages.value, ...removed]
+        gameState.value = previousState
+        draft.value = previousDraft
+        persistGame()
+        requestScroll(removed[removed.length - 1].id)
+      },
+    },
+  })
 }
 
 function newGame() {
+  cancelTurn()
   stopSpeech()
   messages.value = []
   gameState.value = ''
   usage.value = null
   errorMessage.value = ''
-  escribiendo.value = false
+  draft.value = ''
   diceGroups.value = defaultDice()
-  clearGameStorage()
+  diceResults.value = null
+  reportStorage(clearGameStorage())
   requestScroll('bottom')
   diceOpen.value = false
   contextOpen.value = false
+  memoryOpen.value = false
 }
 
 function saveConfig(next: Settings) {
   const modelChanged = next.model !== settings.model || next.baseUrl !== settings.baseUrl
   Object.assign(settings, next)
-  saveSettings(settings)
+  persistSettings()
   if (modelChanged) {
     usage.value = null
     saveUsage(null)
   }
   settingsOpen.value = false
-  void loadVoices()
+  refreshBrowserVoices()
 }
 
+function updateSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
+  settings[key] = value
+  persistSettings()
+}
+
+/** Edición manual de la memoria: también actualiza la instantánea del último turno. */
 function updateMemory(memory: string) {
   gameState.value = memory.trim()
-  saveState(gameState.value)
+  const index = messages.value.map((message) => message.role).lastIndexOf('assistant')
+  if (index !== -1) {
+    const copy = [...messages.value]
+    copy[index] = { ...copy[index], memory: gameState.value }
+    messages.value = copy
+  }
+  persistGame()
 }
 
 function setAutoRead(value: boolean) {
-  settings.autoRead = value
-  saveSettings(settings)
+  updateSetting('autoRead', value)
 }
 
-function openDice() {
-  if (requiresApiKey(settings.baseUrl) && !settings.apiKey.trim()) {
-    settingsOpen.value = true
-    return
-  }
-  if (!diceAvailable.value) return
-  diceGroups.value = loadDiceGroups() ?? diceGroups.value
+// ---------------------------------------------------------------------------
+// Dados
+// ---------------------------------------------------------------------------
+
+function openDice(prefill?: DiceRequest[]) {
+  if (!ensureConfigured()) return
+  if (loading.value) return
+  diceResults.value = null
+  const stored = loadDiceGroups()
+  if (prefill?.length) diceGroups.value = prefill.map(toGroup)
+  else if (stored) diceGroups.value = stored
+  else if (diceSuggestions.value.length) diceGroups.value = diceSuggestions.value[0].requests.map(toGroup)
+  else diceGroups.value = defaultDice()
   diceOpen.value = true
 }
 
-function closeDice(save = true) {
-  if (save) saveDiceGroups(diceGroups.value)
+function closeDice() {
+  if (!diceResults.value) reportStorage(saveDiceGroups(diceGroups.value))
+  diceResults.value = null
   diceOpen.value = false
 }
 
-async function confirmDice(requests: DiceRequest[]) {
-  const rolls = requests.map((request) =>
-    rollDice(request.sides, request.count, request.bonus),
-  )
-  const message = messageFor(rolls)
+/**
+ * Lanza y envía al DM en el mismo paso: el resultado queda comprometido aunque
+ * se cierre el diálogo durante la animación.
+ */
+function rollAndSend(requests: DiceRequest[]): DiceRoll[] {
+  if (!requests.length || loading.value) return []
+  if (!ensureConfigured()) return []
+  const rolls = requests.map((request) => rollRequest(request))
+  diceResults.value = rolls
+  diceOpen.value = true
   clearDiceGroups()
   diceGroups.value = defaultDice()
-  diceOpen.value = false
-  await send(message)
+  void send(messageFor(rolls))
+  return rolls
 }
+
+// ---------------------------------------------------------------------------
+// Voz
+// ---------------------------------------------------------------------------
 
 function refreshBrowserVoices() {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -263,11 +565,12 @@ function refreshBrowserVoices() {
   browserVoices.value = spanish.length ? spanish : all
   window.speechSynthesis.onvoiceschanged = refreshBrowserVoices
   if (
+    all.length &&
     settings.browserVoice &&
     !all.some((voice) => voice.voiceURI === settings.browserVoice)
   ) {
     settings.browserVoice = ''
-    saveSettings(settings)
+    persistSettings()
   }
 }
 
@@ -287,28 +590,77 @@ function bestBrowserVoice(): SpeechSynthesisVoice | null {
   return [...list].sort((a, b) => score(b) - score(a))[0]
 }
 
-function loadVoices() {
-  refreshBrowserVoices()
+function resolveVoice(voiceURI = settings.browserVoice): SpeechSynthesisVoice | null {
+  const selected = voiceURI
+    ? browserVoices.value.find((voice) => voice.voiceURI === voiceURI)
+    : null
+  return selected ?? bestBrowserVoice()
 }
 
 function stopSpeech() {
   speechToken++
-  if (utterance && typeof window !== 'undefined' && 'speechSynthesis' in window) {
-    window.speechSynthesis.cancel()
-    utterance = null
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    if (speakingId.value || window.speechSynthesis.speaking) window.speechSynthesis.cancel()
   }
   speakingId.value = null
   ttsPaused.value = false
 }
 
-function speak(message: ChatMessage, auto = false): boolean {
+function speakText(
+  text: string,
+  options: { id: string; auto?: boolean; voiceURI?: string; rate?: number },
+): boolean {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
     ttsError.value = 'Este navegador no soporta la voz del sistema.'
     return false
   }
   const synth = window.speechSynthesis
-  if (speakingId.value === message.id && utterance) {
-    if (synth.paused) {
+  stopSpeech()
+  const chunks = chunkForSpeech(cleanForSpeech(text))
+  if (!chunks.length) return false
+  const token = speechToken
+  const voice = resolveVoice(options.voiceURI)
+  speakingId.value = options.id
+  ttsPaused.value = false
+  ttsError.value = ''
+
+  const speakChunk = (index: number) => {
+    if (token !== speechToken) return
+    if (index >= chunks.length) {
+      speakingId.value = null
+      ttsPaused.value = false
+      return
+    }
+    const player = new SpeechSynthesisUtterance(chunks[index])
+    if (voice) {
+      player.voice = voice
+      player.lang = voice.lang
+    } else {
+      player.lang = 'es-CO'
+    }
+    player.rate = options.rate ?? settings.speechRate
+    player.pitch = 1
+    player.onend = () => speakChunk(index + 1)
+    player.onerror = (event) => {
+      if (token !== speechToken) return
+      const code = (event as SpeechSynthesisErrorEvent).error
+      if (code === 'interrupted' || code === 'canceled') return
+      ttsError.value =
+        options.auto && index === 0
+          ? 'El navegador bloqueó la lectura automática. Toca el altavoz del mensaje.'
+          : 'No se pudo reproducir la voz del navegador.'
+      stopSpeech()
+    }
+    synth.speak(player)
+  }
+  speakChunk(0)
+  return true
+}
+
+function speak(message: ChatMessage, auto = false): boolean {
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window && speakingId.value === message.id) {
+    const synth = window.speechSynthesis
+    if (ttsPaused.value) {
       synth.resume()
       ttsPaused.value = false
     } else {
@@ -317,85 +669,29 @@ function speak(message: ChatMessage, auto = false): boolean {
     }
     return true
   }
-  stopSpeech()
-  const token = speechToken
-  const text = cleanForSpeech(message.display)
-  if (!text) return false
-  const player = new SpeechSynthesisUtterance(text)
-  const selected = settings.browserVoice
-    ? browserVoices.value.find((voice) => voice.voiceURI === settings.browserVoice)
-    : null
-  const voice = selected ?? bestBrowserVoice()
-  if (voice) {
-    player.voice = voice
-    player.lang = voice.lang
-  } else {
-    player.lang = 'es-CO'
-  }
-  player.rate = 1
-  player.pitch = 1
-  player.onend = () => {
-    if (token !== speechToken) return
-    utterance = null
-    speakingId.value = null
-    ttsPaused.value = false
-  }
-  player.onerror = (event) => {
-    if (token !== speechToken) return
-    const code = (event as SpeechSynthesisErrorEvent).error
-    if (code === 'interrupted' || code === 'canceled') return
-    ttsError.value = auto
-      ? 'El navegador bloqueó la lectura automática. Toca el altavoz del mensaje.'
-      : 'No se pudo reproducir la voz del navegador.'
-    stopSpeech()
-  }
-  utterance = player
-  speakingId.value = message.id
-  ttsPaused.value = false
-  ttsError.value = ''
-  synth.speak(player)
-  return true
+  return speakText(message.display, { id: message.id, auto })
+}
+
+function previewVoice(voiceURI: string, rate: number) {
+  speakText(
+    `Saludos, aventurera. Soy la voz que narrará las crónicas de ${settings.character}.`,
+    { id: 'preview', voiceURI, rate },
+  )
 }
 
 function toggleSpeech(message: ChatMessage) {
-  void speak(message)
+  speak(message)
 }
 
-function toggleWriting() {
-  escribiendo.value = !escribiendo.value
-}
+// ---------------------------------------------------------------------------
+// Progreso
+// ---------------------------------------------------------------------------
 
-function formatTokens(value: number): string {
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toLocaleString('es', { maximumFractionDigits: 1 })}M`
-  }
-  if (value >= 1_000) {
-    return `${(value / 1_000).toLocaleString('es', { maximumFractionDigits: 1 })}k`
-  }
-  return value.toLocaleString('es')
-}
-
-function formatNumber(value: number): string {
-  return value.toLocaleString('es')
-}
-
-function diceNotation(request: DiceRequest): string {
-  return notation(request.sides, request.count, request.bonus)
-}
-
-function diceSummary(requests: DiceRequest[]): string {
-  return joinWithAnd(requests.map(diceNotation))
-}
-
-function exportProgress() {
+function exportProgress(includeApiKey = false) {
   downloadProgress(
-    serializeProgress(
-      settings,
-      messages.value,
-      gameState.value,
-      usage.value,
-      diceGroups.value,
-    ),
+    serializeProgress(settings, messages.value, gameState.value, usage.value, diceGroups.value, {
+      includeApiKey,
+    }),
   )
 }
 
@@ -405,51 +701,65 @@ async function importProgress(file: File) {
   }
   const data = await parseProgressFile(file)
   stopSpeech()
+  const currentKey = settings.apiKey
   Object.assign(settings, data.settings)
-  saveSettings(settings)
-  messages.value = data.messages.map((message) =>
-    createMessage(message.role, message.content),
-  )
+  // Un archivo exportado sin key conserva la key de este navegador.
+  if (!settings.apiKey.trim() && currentKey.trim()) settings.apiKey = currentKey
+  messages.value = data.messages.map((item) => {
+    const message = createMessage(item.role, item.content)
+    if (item.role === 'assistant' && typeof item.memory === 'string') message.memory = item.memory
+    return message
+  })
   gameState.value = data.state
   usage.value = data.usage
   diceGroups.value = data.dice.length ? data.dice : defaultDice()
-  escribiendo.value = false
   errorMessage.value = ''
-  saveMessages(messages.value)
-  saveState(gameState.value)
-  saveUsage(usage.value)
-  saveDiceGroups(diceGroups.value)
+  persistSettings()
+  persistGame()
+  reportStorage(saveDiceGroups(diceGroups.value))
   refreshBrowserVoices()
   requestScroll(messages.value.length ? messages.value[messages.value.length - 1].id : 'bottom')
-  settingsOpen.value = requiresApiKey(settings.baseUrl) && !settings.apiKey.trim()
 }
 
-async function init() {
+// ---------------------------------------------------------------------------
+// Arranque
+// ---------------------------------------------------------------------------
+
+function init() {
   if (initialized) return
   initialized = true
-  if (requiresApiKey(settings.baseUrl) && !settings.apiKey.trim()) {
-    settingsOpen.value = true
-  }
+  if (!configured.value) openSettings('connection')
   if (messages.value.length) {
     requestScroll(messages.value[messages.value.length - 1].id)
   }
   refreshBrowserVoices()
-  void loadVoices()
 }
 
 export function useGame() {
   return {
     settings,
     messages,
+    displayMessages,
     gameState,
     usage,
     loading,
-    escribiendo,
+    phase,
+    turnStartedAt,
+    pendingId,
+    streamText,
+    reasoningChars,
     draft,
     errorMessage,
+    errorKind,
+    storageFailed,
+    announcement,
     settingsOpen,
+    settingsTab,
     diceOpen,
+    diceResults,
     contextOpen,
+    memoryOpen,
+    panelOpen,
     diceGroups,
     browserVoices,
     speakingId,
@@ -457,35 +767,43 @@ export function useGame() {
     ttsError,
     scrollTarget,
     scrollNonce,
+    streamNonce,
+    composerFocusNonce,
+    lastMessage,
     lastAssistant,
-    diceAvailable,
+    diceRequested,
+    diceSuggestions,
+    visibleOptions,
     hasMessages,
+    awaitingReply,
+    configured,
     contextTokens,
     reasoningTokens,
     init,
     send,
     startAdventure,
+    retry,
+    regenerate,
+    editMessage,
+    cancelTurn,
     newGame,
     saveConfig,
+    updateSetting,
     updateMemory,
     setAutoRead,
+    openSettings,
     exportProgress,
     importProgress,
     openDice,
     closeDice,
-    confirmDice,
-    loadVoices,
+    rollAndSend,
+    refreshBrowserVoices,
     stopSpeech,
     speak,
+    previewVoice,
     toggleSpeech,
-    toggleWriting,
-    showOptions,
-    formatTokens,
-    formatNumber,
-    diceNotation,
-    diceSummary,
+    focusComposer,
     generateResponse,
     requestScroll,
-    persistMessages,
   }
 }

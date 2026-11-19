@@ -26,3 +26,37 @@ describe('Messages', () => {
     expect(modelHistoryContent(message)).toBe('La puerta cruje.')
   })
 })
+
+import { parseMarkdown } from '../src/lib/markdown'
+import { cleanForSpeech } from '../src/lib/ttsText'
+
+describe('Sintaxis <OOC> en la narración', () => {
+  it('muestra los corchetes angulares como texto', () => {
+    const html = parseMarkdown('Usa <corchetes angulares> o escribe <hoja>.')
+    expect(html).toContain('&lt;corchetes angulares&gt;')
+    expect(html).toContain('&lt;hoja&gt;')
+  })
+
+  it('la voz lee el comando y descarta etiquetas HTML', () => {
+    expect(cleanForSpeech('Escribe <hoja> para verla.<br>Fin')).toBe('Escribe hoja para verla. Fin')
+  })
+})
+
+describe('Tiradas resueltas por el DM', () => {
+  it('no confunde la tirada de un enemigo con una petición', () => {
+    const message = createMessage(
+      'assistant',
+      'El ogro lanza su garrote: d20 [12] + 6 = 18 contra tu CA 12. ¡Impacta!\n\n{1. Retrocedo}\n{2. Contraataco}\n{3. Huyo}',
+    )
+    expect(message.diceRequest).toBe(false)
+    expect(message.options).toHaveLength(3)
+  })
+
+  it('sigue detectando una petición en la misma respuesta', () => {
+    const message = createMessage(
+      'assistant',
+      'El ogro lanza su garrote: d20 [12] + 6 = 18. Ahora lanza 1d20 + 3 para esquivar.',
+    )
+    expect(message.diceRequest).toBe(true)
+  })
+})

@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Check, Copy, Dices, Pause, Play, RefreshCw, Volume2 } from '@lucide/vue'
 import type { ChatMessage } from '../types'
 import { renderMarkdown } from '../lib/markdown'
 import { formatNumber, formatRate } from '../lib/format'
+import {
+  alignWords,
+  clearHighlight,
+  collectDomWords,
+  setHighlight,
+  type DomWord,
+} from '../lib/speechHighlight'
 import { useGame } from '../composables/useGame'
 import { useToasts } from '../composables/useToasts'
 import AppLogo from './AppLogo.vue'
@@ -21,7 +28,65 @@ const speaking = computed(() => game.speakingId.value === props.message.id)
 const paused = computed(() => speaking.value && game.ttsPaused.value)
 const repairing = computed(() => props.streaming && game.phase.value === 'repairing')
 const copied = ref(false)
+const body = ref<HTMLElement | null>(null)
 const stats = computed(() => game.liveStats.value)
+
+// --- Resaltado de la palabra que suena -------------------------------------------------
+let shown: DomWord[] = []
+let mapping: number[] = []
+let mappedFor: readonly string[] | null = null
+let wasVisible = true
+
+function prepareHighlight(words: readonly string[]) {
+  if (!body.value) return false
+  shown = collectDomWords(body.value)
+  mapping = alignWords([...words], shown.map((word) => word.text))
+  mappedFor = words
+  return true
+}
+
+function showWord(spokenIndex: number) {
+  const words = game.speechWords.value
+  if (!words.length) return
+  if (mappedFor !== words && !prepareHighlight(words)) return
+  // Si la palabra no existe en pantalla (p. ej. un número de lista) se mantiene la anterior.
+  let target = -1
+  for (let i = Math.min(spokenIndex, mapping.length - 1); i >= 0 && target < 0; i--) target = mapping[i]
+  const word = target >= 0 ? shown[target] : null
+  if (!word) return
+  const range = setHighlight(word)
+  if (!range) return
+  const box = range.getBoundingClientRect()
+  const visible = box.bottom > 72 && box.top < window.innerHeight - 140
+  // Sigue la lectura solo si el lector la estaba viendo: no tira de la pantalla si se fue a otro sitio.
+  if (!visible && wasVisible) {
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    word.node.parentElement?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
+  }
+  wasVisible = visible
+}
+
+watch(
+  () => [speaking.value, game.speechWordIndex.value, html.value] as const,
+  ([isSpeaking, index], [, , previousHtml]) => {
+    if (!isSpeaking) {
+      mappedFor = null
+      wasVisible = true
+      return
+    }
+    // El texto mostrado cambió (p. ej. se regeneró): hay que volver a alinear.
+    if (previousHtml !== html.value) mappedFor = null
+    showWord(index)
+  },
+  { flush: 'post' },
+)
+
+watch(speaking, (isSpeaking) => {
+  if (!isSpeaking) clearHighlight()
+})
+onBeforeUnmount(() => {
+  if (speaking.value) clearHighlight()
+})
 
 async function copy() {
   try {
@@ -108,6 +173,7 @@ async function copy() {
       <ThinkingIndicator v-if="streaming && !message.display" />
       <template v-else>
         <div
+          ref="body"
           class="dm-markdown"
           :class="{ 'has-dropcap': dropcap, 'is-streaming': streaming && !repairing }"
           v-html="html"

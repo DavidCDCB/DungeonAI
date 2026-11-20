@@ -497,3 +497,13 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Palabra que está sonando durante la lectura en voz alta (CSS Custom Highlight API). */
+::highlight(tts-word) {
+  background-color: rgb(214 179 106 / 0.34);
+  color: var(--color-gold-bright);
+  text-decoration: underline;
+  text-decoration-color: rgb(240 214 154 / 0.7);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+}

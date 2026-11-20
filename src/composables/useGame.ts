@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import type {
   ChatMessage,
   DiceGroup,
@@ -29,6 +29,7 @@ import { requiresApiKey } from '../lib/providers'
 import { isContextError } from '../lib/sse'
 import { downloadProgress, parseProgressFile, serializeProgress } from '../lib/transfer'
 import { chunkForSpeech, cleanForSpeech } from '../lib/ttsText'
+import { estimateOffset, spokenWords, wordIndexAt } from '../lib/speechHighlight'
 import { formatTokens } from '../lib/format'
 import { charsToTokens } from '../lib/contextBudget'
 import { createPaceMeter } from '../lib/pace'
@@ -95,6 +96,9 @@ const composerFocusNonce = ref(0)
 const browserVoices = ref<SpeechSynthesisVoice[]>([])
 const speakingId = ref<string | null>(null)
 const ttsPaused = ref(false)
+/** Palabras del texto que se está leyendo y cuál suena ahora (-1 = ninguna). */
+const speechWords = shallowRef<string[]>([])
+const speechWordIndex = ref(-1)
 const ttsError = ref('')
 
 let abortController: AbortController | null = null
@@ -708,13 +712,129 @@ function resolveVoice(voiceURI = settings.browserVoice): SpeechSynthesisVoice | 
   return selected ?? bestBrowserVoice()
 }
 
+/**
+ * Sesión de lectura en curso. Se guarda el trozo y la posición para poder pausar sin
+ * depender de speechSynthesis.pause()/resume(), que en Android y con las voces «online»
+ * se comporta como una cancelación y luego no vuelve a sonar.
+ */
+interface SpeechSession {
+  id: string
+  chunks: string[]
+  /** Palabras que hay antes de cada trozo (para localizar la palabra en todo el texto). */
+  wordBase: number[]
+  index: number
+  /** Posición (caracteres) dentro del trozo actual, según los eventos de límite de palabra. */
+  offset: number
+  voice: SpeechSynthesisVoice | null
+  rate?: number
+  auto?: boolean
+}
+let speechSession: SpeechSession | null = null
+
 function stopSpeech() {
   speechToken++
+  speechSession = null
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-    if (speakingId.value || window.speechSynthesis.speaking) window.speechSynthesis.cancel()
+    if (speakingId.value || window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      window.speechSynthesis.cancel()
+    }
   }
   speakingId.value = null
   ttsPaused.value = false
+  speechWords.value = []
+  speechWordIndex.value = -1
+}
+
+/** Guarda la posición (caracteres del trozo actual) y la palabra que suena en todo el texto. */
+function markSpeechPosition(session: SpeechSession, offset: number) {
+  session.offset = offset
+  const chunk = session.chunks[session.index] ?? ''
+  speechWordIndex.value = session.wordBase[session.index] + wordIndexAt(chunk, offset)
+}
+
+/** Habla el trozo `index` de la sesión desde `offset`, y encadena los siguientes. */
+function playSession(session: SpeechSession) {
+  const synth = window.speechSynthesis
+  const token = ++speechToken
+  const speakChunk = () => {
+    if (token !== speechToken) return
+    if (session.index >= session.chunks.length) {
+      stopSpeech()
+      return
+    }
+    const chunk = session.chunks[session.index]
+    const base = session.offset
+    const rest = chunk.slice(base)
+    const text = rest.trim()
+    if (!text) {
+      session.index++
+      session.offset = 0
+      speakChunk()
+      return
+    }
+    // Posición absoluta (en el trozo) del primer carácter que se va a pronunciar.
+    const origin = base + (rest.length - rest.trimStart().length)
+    const rate = session.rate ?? settings.speechRate
+    const player = new SpeechSynthesisUtterance(text)
+    if (session.voice) {
+      player.voice = session.voice
+      player.lang = session.voice.lang
+    } else {
+      player.lang = 'es-CO'
+    }
+    player.rate = rate
+    player.pitch = 1
+
+    // Si la voz emite eventos de palabra se usan; si no (muchas voces online) se estima por tiempo.
+    let heardBoundary = false
+    let startedAt = performance.now()
+    let timer: ReturnType<typeof setInterval> | null = null
+    const stopTimer = () => {
+      if (timer) clearInterval(timer)
+      timer = null
+    }
+    markSpeechPosition(session, origin)
+    timer = setInterval(() => {
+      if (token !== speechToken || heardBoundary) {
+        stopTimer()
+        return
+      }
+      const elapsed = performance.now() - startedAt
+      if (elapsed < 600) return
+      const estimated = origin + estimateOffset(text, elapsed, rate)
+      if (estimated > session.offset) markSpeechPosition(session, estimated)
+    }, 120)
+
+    player.onstart = () => {
+      startedAt = performance.now()
+    }
+    // Recuerda por dónde va: al reanudar se retoma desde la última palabra iniciada.
+    player.onboundary = (event) => {
+      if (token !== speechToken || event.name === 'sentence') return
+      heardBoundary = true
+      markSpeechPosition(session, origin + event.charIndex)
+    }
+    player.onend = () => {
+      stopTimer()
+      if (token !== speechToken) return
+      session.index++
+      session.offset = 0
+      speakChunk()
+    }
+    player.onerror = (event) => {
+      stopTimer()
+      if (token !== speechToken) return
+      const code = (event as SpeechSynthesisErrorEvent).error
+      if (code === 'interrupted' || code === 'canceled') return
+      ttsError.value =
+        session.auto && session.index === 0
+          ? 'El navegador bloqueó la lectura automática. Toca el altavoz del mensaje.'
+          : 'No se pudo reproducir la voz del navegador.'
+      stopSpeech()
+    }
+    synth.speak(player)
+  }
+  speakChunk()
 }
 
 function speakText(
@@ -725,59 +845,61 @@ function speakText(
     ttsError.value = 'Este navegador no soporta la voz del sistema.'
     return false
   }
-  const synth = window.speechSynthesis
   stopSpeech()
   const chunks = chunkForSpeech(cleanForSpeech(text))
   if (!chunks.length) return false
-  const token = speechToken
-  const voice = resolveVoice(options.voiceURI)
+  let total = 0
+  const wordBase = chunks.map((chunk) => {
+    const before = total
+    total += chunk.split(' ').filter(Boolean).length
+    return before
+  })
+  const session: SpeechSession = {
+    id: options.id,
+    chunks,
+    wordBase,
+    index: 0,
+    offset: 0,
+    voice: resolveVoice(options.voiceURI),
+    rate: options.rate,
+    auto: options.auto,
+  }
+  speechSession = session
   speakingId.value = options.id
   ttsPaused.value = false
   ttsError.value = ''
-
-  const speakChunk = (index: number) => {
-    if (token !== speechToken) return
-    if (index >= chunks.length) {
-      speakingId.value = null
-      ttsPaused.value = false
-      return
-    }
-    const player = new SpeechSynthesisUtterance(chunks[index])
-    if (voice) {
-      player.voice = voice
-      player.lang = voice.lang
-    } else {
-      player.lang = 'es-CO'
-    }
-    player.rate = options.rate ?? settings.speechRate
-    player.pitch = 1
-    player.onend = () => speakChunk(index + 1)
-    player.onerror = (event) => {
-      if (token !== speechToken) return
-      const code = (event as SpeechSynthesisErrorEvent).error
-      if (code === 'interrupted' || code === 'canceled') return
-      ttsError.value =
-        options.auto && index === 0
-          ? 'El navegador bloqueó la lectura automática. Toca el altavoz del mensaje.'
-          : 'No se pudo reproducir la voz del navegador.'
-      stopSpeech()
-    }
-    synth.speak(player)
-  }
-  speakChunk(0)
+  speechWords.value = spokenWords(chunks)
+  speechWordIndex.value = 0
+  playSession(session)
   return true
 }
 
+function pauseSpeech() {
+  const session = speechSession
+  if (!session) return
+  // Invalida los manejadores del trozo actual y corta el audio: reanudar lo vuelve a lanzar.
+  speechToken++
+  window.speechSynthesis.cancel()
+  ttsPaused.value = true
+}
+
+function resumeSpeech() {
+  const session = speechSession
+  if (!session) return
+  ttsPaused.value = false
+  ttsError.value = ''
+  playSession(session)
+}
+
 function speak(message: ChatMessage, auto = false): boolean {
-  if (typeof window !== 'undefined' && 'speechSynthesis' in window && speakingId.value === message.id) {
-    const synth = window.speechSynthesis
-    if (ttsPaused.value) {
-      synth.resume()
-      ttsPaused.value = false
-    } else {
-      synth.pause()
-      ttsPaused.value = true
-    }
+  if (
+    typeof window !== 'undefined' &&
+    'speechSynthesis' in window &&
+    speechSession &&
+    speakingId.value === message.id
+  ) {
+    if (ttsPaused.value) resumeSpeech()
+    else pauseSpeech()
     return true
   }
   return speakText(message.display, { id: message.id, auto })
@@ -877,6 +999,8 @@ export function useGame() {
     browserVoices,
     speakingId,
     ttsPaused,
+    speechWords,
+    speechWordIndex,
     ttsError,
     scrollTarget,
     scrollNonce,

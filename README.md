@@ -130,6 +130,8 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 
 - Tamaño de texto (pequeño/normal/grande) y letra de narración (Literata «libro» o Inter «moderna»). Letra capital en cada escena.
 - Voz del navegador con selector, **Probar**, velocidad y lectura automática. El texto se lee por fragmentos para evitar el corte de ~15 s de Chrome con voces largas.
+- **Resaltado palabra a palabra** mientras suena (CSS Custom Highlight API: Chrome/Edge 105+, Safari 17.2+, Firefox 140+; en otros navegadores se lee sin resaltar). Si la voz no emite eventos de palabra, la posición se estima por tiempo. La pantalla sigue la lectura solo si la palabra estaba a la vista.
+- **Pausar** corta la voz y **Reanudar** la retoma desde la última palabra: `speechSynthesis.pause()/resume()` no es fiable en Android ni con voces online.
 
 ### Conexión y contexto
 
@@ -224,7 +226,7 @@ src/
 │  ├─ sse.ts                  parser SSE y lectura de errores de contexto
 │  ├─ dice.ts                 tiradas, modos, sugerencias y lectura de resultados
 │  ├─ gameState.ts            memoria [ESTADO], secciones e instantáneas
-│  ├─ messages.ts · options.ts · markdown.ts · ttsText.ts
+│  ├─ messages.ts · options.ts · markdown.ts · ttsText.ts · speechHighlight.ts
 │  ├─ pace.ts                 velocidad actual del razonamiento (ventana deslizante) y tempo
 │  ├─ lore.ts                 contexto del mundo: bloque del prompt, plantilla, generación
 │  ├─ prompt.ts · commands.ts · providers.ts · contextBudget.ts

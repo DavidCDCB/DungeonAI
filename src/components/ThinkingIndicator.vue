@@ -2,8 +2,12 @@
 import { computed } from 'vue'
 import { useGame } from '../composables/useGame'
 import { formatElapsed, formatNumber, formatRate } from '../lib/format'
+import { PACE_LABELS, paceBars, paceIntensity, paceTier } from '../lib/pace'
+import ReasoningOrb from './ReasoningOrb.vue'
 
 const { phase, turnStartedAt, now, liveStats, settings, cancelTurn } = useGame()
+
+const BARS = 5
 
 const elapsed = computed(() => formatElapsed(now.value - turnStartedAt.value))
 const label = computed(() => {
@@ -14,40 +18,68 @@ const label = computed(() => {
 })
 const thinking = computed(() => liveStats.value.reasoningTokens > 0)
 const slow = computed(() => now.value - turnStartedAt.value > 45_000)
+
+const speed = computed(() => liveStats.value.reasoningSpeed)
+const tier = computed(() => paceTier(speed.value))
+const litBars = computed(() => paceBars(speed.value, BARS))
+
+/** Intensidad del orbe: sigue la velocidad real del razonamiento. */
+const intensity = computed(() => {
+  if (phase.value === 'writing' || phase.value === 'repairing') return 0.3
+  if (!thinking.value) return 0.06
+  return speed.value === null ? 0.15 : Math.max(0.05, paceIntensity(speed.value))
+})
+
+const speedTitle = computed(() => {
+  const average = liveStats.value.reasoningRate
+  return `Velocidad actual del razonamiento (últimos segundos, estimada)${
+    average ? ` · media: ${formatRate(average)}` : ''
+  }`
+})
 </script>
 
 <template>
   <div class="flex items-center gap-4 py-1" role="status">
-    <div class="relative h-9 w-9 shrink-0" aria-hidden="true">
-      <div class="animate-orbit absolute inset-0 rounded-full border border-dashed border-gold-dim/70" />
-      <div class="absolute inset-[9px] rounded-full bg-gold/70 shadow-[0_0_16px_rgb(214_179_106/0.7)]" />
-    </div>
+    <ReasoningOrb :intensity="intensity" />
     <div class="min-w-0 flex-1">
       <p class="shimmer-text text-[15px] font-medium">{{ label }}…</p>
-      <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-faint tabular-nums">
-        <span>{{ elapsed }}</span>
-        <template v-if="thinking">
-          <span aria-hidden="true">·</span>
-          <span>
-            Razonamiento:
-            <strong class="font-semibold text-parchment">~{{ formatNumber(liveStats.reasoningTokens) }}</strong>
-            tokens
+      <div class="mt-1 space-y-1.5 text-xs text-faint tabular-nums" aria-live="off">
+        <p class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span>{{ elapsed }}</span>
+          <template v-if="thinking">
+            <span aria-hidden="true">·</span>
+            <span>
+              Razonamiento:
+              <strong class="font-semibold text-parchment">~{{ formatNumber(liveStats.reasoningTokens) }}</strong>
+              tokens
+            </span>
+          </template>
+          <span v-else-if="phase === 'waiting'">· esperando el primer token</span>
+          <template v-if="slow && settings.reasoning === 'max'">
+            <span aria-hidden="true">·</span>
+            <span>el razonamiento max puede tardar minutos</span>
+          </template>
+        </p>
+        <p v-if="thinking" class="flex items-center gap-1.5" :title="speedTitle" :data-tier="tier">
+          <span class="flex h-3 items-end gap-[2px]" aria-hidden="true">
+            <span
+              v-for="n in BARS"
+              :key="n"
+              class="w-[3px] rounded-[1px] transition-[background-color,opacity] duration-300"
+              :class="n <= litBars ? (tier === 'blazing' || tier === 'fast' ? 'bg-arcane' : 'bg-gold-bright') : 'bg-divider'"
+              :style="{ height: `${3 + n * 1.8}px` }"
+            />
           </span>
-          <span aria-hidden="true">·</span>
           <span
-            class="rounded-md border border-divider bg-ink-soft px-1.5 py-0.5 font-mono text-[11px] text-gold-bright"
-            title="Tokens de razonamiento por segundo (estimado)"
+            class="inline-block min-w-[5.6rem] rounded-md border border-divider bg-ink-soft px-1.5 py-0.5 text-right font-mono text-[11px] text-gold-bright"
           >
-            {{ liveStats.reasoningRate ? formatRate(liveStats.reasoningRate) : '— tok/s' }}
+            {{ speed === null ? '— tok/s' : formatRate(speed) }}
           </span>
-        </template>
-        <span v-else-if="phase === 'waiting'">· esperando el primer token</span>
-        <template v-if="slow && settings.reasoning === 'max'">
-          <span aria-hidden="true">·</span>
-          <span>el razonamiento max puede tardar minutos</span>
-        </template>
-      </p>
+          <span class="whitespace-nowrap text-muted">{{ PACE_LABELS[tier] }}</span>
+        </p>
+      </div>
     </div>
-    <button type="button" class="btn-ghost btn-sm" @click="cancelTurn">Detener</button>
+    <!-- En pantallas estrechas se detiene con el botón del compositor. -->
+    <button type="button" class="btn-ghost btn-sm max-sm:hidden" @click="cancelTurn">Detener</button>
   </div>
 </template>

@@ -26,7 +26,8 @@ let restoreFocus: HTMLElement | null = null
 
 const panelClass = computed(() => {
   if (props.variant === 'drawer') {
-    return 'drawer-panel h-full w-full max-w-[560px] border-l border-divider'
+    const drawerWidth = props.size === 'sm' ? 'max-w-[440px]' : props.size === 'lg' ? 'max-w-[740px]' : 'max-w-[560px]'
+    return `drawer-panel h-full w-full ${drawerWidth} border-l border-divider`
   }
   const width = props.size === 'sm' ? 'sm:max-w-md' : props.size === 'lg' ? 'sm:max-w-2xl' : 'sm:max-w-lg'
   return `dialog-panel w-full ${width} max-h-[92dvh] rounded-t-3xl border border-divider sm:rounded-2xl`

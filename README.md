@@ -98,6 +98,7 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 ### Partida
 
 - **Streaming:** el texto del DM aparece mientras se escribe. Mientras tanto se ocultan el bloque `[ESTADO]` y las opciones a medio escribir. El indicador muestra la fase (consultando notas, pensando, escribiendo), el tiempo y los tokens de razonamiento. **Detener** cancela el turno.
+- **Orbe de razonamiento:** mientras el modelo piensa, el orbe reacciona a la velocidad *actual* de los tokens de razonamiento (ventana de unos 2,5 s, no la media): gira más rápido, brilla más y cambia de color al acelerar, y se frena y se apaga si el modelo se detiene. El rango va de **10 tok/s** (giro suave y brillo bajo) a **200 tok/s** (máximo), en escala logarítmica; se ajusta con `PACE_MIN` y `PACE_MAX` en `src/lib/pace.ts`. Junto al contador se ven un medidor de 5 segmentos, los tok/s y el tempo (*calentando · en pausa · despacio · constante · ágil · a toda marcha*). Con «reducir movimiento» del sistema el orbe no gira y solo cambia de brillo. La lógica está en `src/lib/pace.ts` y el orbe en `ReasoningOrb.vue`.
 - **Opciones** como botones numerados (atajos `1`–`5`). La opción 🃏 se destaca como *comodín* y cualquier opción se puede editar antes de enviarla.
 - **Regenerar** la última respuesta del DM; si falla, se restaura la anterior.
 - **Editar** cualquier mensaje tuyo: deshace desde ese punto, devuelve el texto al cuadro y la memoria vuelve a como estaba. El aviso trae **Deshacer**.
@@ -224,6 +225,7 @@ src/
 │  ├─ dice.ts                 tiradas, modos, sugerencias y lectura de resultados
 │  ├─ gameState.ts            memoria [ESTADO], secciones e instantáneas
 │  ├─ messages.ts · options.ts · markdown.ts · ttsText.ts
+│  ├─ pace.ts                 velocidad actual del razonamiento (ventana deslizante) y tempo
 │  ├─ lore.ts                 contexto del mundo: bloque del prompt, plantilla, generación
 │  ├─ prompt.ts · commands.ts · providers.ts · contextBudget.ts
 │  ├─ storage.ts              persistencia en IndexedDB: caché, lotes, migración desde localStorage

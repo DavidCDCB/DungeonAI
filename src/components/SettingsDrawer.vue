@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import {
   BookOpen,
   CheckCircle2,
@@ -161,6 +161,12 @@ watch(
   },
   { immediate: true },
 )
+
+// En pantallas muy estrechas la barra de pestañas puede desplazarse: mantiene visible la activa.
+watch(settingsTab, async (id) => {
+  await nextTick()
+  document.getElementById(`tab-${id}`)?.scrollIntoView({ inline: 'nearest', block: 'nearest' })
+})
 
 watch(
   () => [draft.baseUrl, draft.apiKey, draft.model],
@@ -423,6 +429,7 @@ async function onInstall() {
     title="Ajustes"
     description="Conexión con el modelo, campaña, mundo, prompt, lectura y datos"
     variant="drawer"
+    size="lg"
     @close="close"
   >
     <template #icon>
@@ -430,7 +437,7 @@ async function onInstall() {
     </template>
 
     <template #toolbar>
-      <div role="tablist" aria-label="Secciones de ajustes" class="flex gap-1 overflow-x-auto border-b border-divider px-3 py-2 sm:px-5">
+      <div role="tablist" aria-label="Secciones de ajustes" class="flex gap-1 overflow-x-auto border-b border-divider px-3 py-2 max-[359px]:gap-0.5 max-[359px]:px-1.5 sm:px-5">
         <button
           v-for="tab in tabs"
           :id="`tab-${tab.id}`"
@@ -439,7 +446,9 @@ async function onInstall() {
           role="tab"
           :aria-selected="settingsTab === tab.id"
           :aria-controls="`panel-${tab.id}`"
-          class="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition"
+          :aria-label="tab.label"
+          :title="tab.label"
+          class="inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition pointer-coarse:min-h-10 pointer-coarse:min-w-10 max-[359px]:px-2 max-[359px]:pointer-coarse:min-w-9 md:flex-auto"
           :class="
             settingsTab === tab.id
               ? 'bg-surface-higher text-gold-bright shadow-[inset_0_0_0_1px_rgb(138_110_60/0.55)]'
@@ -447,8 +456,9 @@ async function onInstall() {
           "
           @click="settingsTab = tab.id"
         >
-          <component :is="tab.icon" class="h-3.5 w-3.5" />
-          {{ tab.label }}
+          <component :is="tab.icon" class="h-3.5 w-3.5 shrink-0" />
+          <!-- En pantallas estrechas solo la pestaña activa muestra su nombre, para que quepan las seis. -->
+          <span :class="settingsTab === tab.id ? '' : 'max-md:sr-only'">{{ tab.label }}</span>
         </button>
       </div>
     </template>

@@ -31,6 +31,7 @@ import { downloadProgress, parseProgressFile, serializeProgress } from '../lib/t
 import { chunkForSpeech, cleanForSpeech } from '../lib/ttsText'
 import { formatTokens } from '../lib/format'
 import { charsToTokens } from '../lib/contextBudget'
+import { createPaceMeter } from '../lib/pace'
 import {
   clearDiceGroups,
   clearGameStorage,
@@ -151,8 +152,13 @@ const displayMessages = computed(() =>
 export interface LiveStats {
   reasoningTokens: number
   contentTokens: number
-  /** tok/s del razonamiento (se congela cuando empieza el texto). */
+  /** tok/s medios del razonamiento (se congela cuando empieza el texto). */
   reasoningRate: number | null
+  /**
+   * tok/s *actuales* del razonamiento (ventana de unos 2,5 s): sube y baja con el ritmo
+   * real. 0 si se detuvo, null si aún no hay datos o el razonamiento ya terminó.
+   */
+  reasoningSpeed: number | null
   /** tok/s del texto visible. */
   contentRate: number | null
 }
@@ -164,12 +170,16 @@ function rate(tokens: number, start: number, end: number): number | null {
 }
 
 /** Conteo y velocidad estimados mientras llegan los tokens. */
+const reasoningPace = createPaceMeter()
+
 const liveStats = computed<LiveStats>(() => {
   const reasoningTokens = charsToTokens(reasoningChars.value)
   const contentTokens = charsToTokens(streamText.value.length)
+  const reasoning = reasoningTokens > 0 && !contentStartedAt.value
   return {
     reasoningTokens,
     contentTokens,
+    reasoningSpeed: reasoning ? reasoningPace.rate(now.value) : null,
     reasoningRate: rate(reasoningTokens, reasoningStartedAt.value, reasoningEndedAt.value || now.value),
     contentRate: rate(contentTokens, contentStartedAt.value, now.value),
   }
@@ -318,6 +328,10 @@ function applyProgress() {
     reasoningStartedAt.value = 0
     reasoningEndedAt.value = 0
     contentStartedAt.value = 0
+    reasoningPace.reset()
+  }
+  if (progress.reasoningChars > 0 && !progress.content) {
+    reasoningPace.push(stamp, charsToTokens(progress.reasoningChars))
   }
   if (progress.reasoningChars > 0 && !reasoningStartedAt.value) reasoningStartedAt.value = stamp
   if (progress.content && !contentStartedAt.value) {
@@ -374,6 +388,7 @@ async function generateResponse(): Promise<boolean> {
   reasoningStartedAt.value = 0
   reasoningEndedAt.value = 0
   contentStartedAt.value = 0
+  reasoningPace.reset()
   now.value = Date.now()
   if (clock) clearInterval(clock)
   clock = setInterval(() => (now.value = Date.now()), 250)

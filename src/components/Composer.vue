@@ -349,10 +349,6 @@ defineExpose({ focus: () => textarea.value?.focus() })
           Sin guardar ·
           <button type="button" class="underline" @click="exportProgress()">Exportar</button>
         </span>
-        <span v-else-if="hasMessages" class="hidden items-center gap-1 sm:inline-flex">
-          <Check class="h-3 w-3" />
-          Guardado en este dispositivo
-        </span>
         <span class="ml-auto hidden items-center gap-1 lg:inline-flex">
           <span class="kbd">1</span>–<span class="kbd">5</span> opciones ·
           <span class="kbd">D</span> dados · <span class="kbd">/</span> escribir

@@ -1,6 +1,12 @@
 import type { ChatMessage, Reasoning, Settings, TokenUsage } from '../types'
 import { estimateTokens, selectHistory } from './contextBudget'
-import { LORE_SYSTEM_PROMPT, cleanGeneratedLore, loreRequest } from './lore'
+import {
+  LORE_FORMAT_SYSTEM_PROMPT,
+  LORE_SYSTEM_PROMPT,
+  cleanGeneratedLore,
+  loreFormatRequest,
+  loreRequest,
+} from './lore'
 import { createMessage, modelHistoryContent } from './messages'
 import { isOpenCodeBase, normalizeBaseUrl, requiresApiKey } from './providers'
 import { SseParser, contextLimitFromError, isContextError, readStreamChunk } from './sse'
@@ -402,33 +408,61 @@ export async function requestMissingOptions(
   return result.content
 }
 
-/**
- * Pide al modelo un dossier de contexto del mundo a partir del mundo y el tema.
- * Reporta el texto parcial mientras llega (con streaming).
- */
-export async function generateLore(
+export interface LoreOptions {
+  signal?: AbortSignal
+  onProgress?: (text: string) => void
+}
+
+/** Pide al modelo un texto de lore con el esfuerzo elegido en `loreReasoning`. */
+async function requestLore(
   settings: Settings,
-  options: { signal?: AbortSignal; onProgress?: (text: string) => void } = {},
-): Promise<string> {
-  // Recordar datos de una obra no necesita un razonamiento largo.
-  const reasoning: Reasoning = ['low', 'medium'].includes(settings.reasoning) ? settings.reasoning : 'medium'
+  system: string,
+  request: string,
+  options: LoreOptions,
+): Promise<{ lore: string; unknown: boolean }> {
   const result = await chatWithFallback(
-    { ...settings, reasoning },
-    LORE_SYSTEM_PROMPT,
-    [createMessage('user', loreRequest(settings))],
+    { ...settings, reasoning: settings.loreReasoning ?? 'medium' },
+    system,
+    [createMessage('user', request)],
     {
       stream: settings.stream,
       signal: options.signal,
       onProgress: (progress) => options.onProgress?.(progress.content),
     },
   )
-  const { lore, unknown } = cleanGeneratedLore(result.content)
+  const cleaned = cleanGeneratedLore(result.content)
+  if (!cleaned.lore) throw new ApiError('El modelo no devolvió texto.')
+  return cleaned
+}
+
+/**
+ * Genera desde cero un dossier de contexto a partir del mundo y el tema.
+ * Reporta el texto parcial mientras llega (con streaming).
+ */
+export async function generateLore(settings: Settings, options: LoreOptions = {}): Promise<string> {
+  const { lore, unknown } = await requestLore(
+    settings,
+    LORE_SYSTEM_PROMPT,
+    loreRequest(settings),
+    options,
+  )
   if (unknown) {
     throw new ApiError(
-      'El modelo no conoce ese mundo. Pega aquí un resumen o escribe el contexto a mano.',
+      'El modelo no conoce ese mundo. Pega un texto de la franquicia y usa «Aplicar plantilla», o escríbelo a mano.',
     )
   }
-  if (!lore) throw new ApiError('El modelo no devolvió texto.')
+  return lore
+}
+
+/** Reescribe el texto de `settings.lore` (p. ej. copiado de una wiki) con la plantilla. */
+export async function formatLore(settings: Settings, options: LoreOptions = {}): Promise<string> {
+  if (!settings.lore.trim()) throw new ApiError('No hay texto que ajustar a la plantilla.')
+  const { lore } = await requestLore(
+    settings,
+    LORE_FORMAT_SYSTEM_PROMPT,
+    loreFormatRequest(settings),
+    options,
+  )
   return lore
 }
 

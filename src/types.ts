@@ -41,6 +41,8 @@ export interface Settings {
   showSecrets: boolean
   /** Contexto del mundo (lore): base de conocimiento que se añade al prompt. */
   lore: string
+  /** Esfuerzo de razonamiento al generar el lore o aplicarle la plantilla. */
+  loreReasoning: Reasoning
 }
 
 export interface TokenUsage {
@@ -107,6 +109,7 @@ export const DEFAULT_SETTINGS: Settings = {
   readingFont: 'serif',
   showSecrets: false,
   lore: '',
+  loreReasoning: 'medium',
 }
 
 export const REASONING_LEVELS: Reasoning[] = ['low', 'medium', 'high', 'xhigh', 'max']

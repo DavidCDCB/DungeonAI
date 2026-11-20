@@ -29,6 +29,9 @@ export function formatRate(tokensPerSecond: number): string {
 }
 
 export function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024 * 1024)).toLocaleString('es', { maximumFractionDigits: 1 })} GB`
+  }
   if (bytes >= 1024 * 1024) {
     return `${(bytes / (1024 * 1024)).toLocaleString('es', { maximumFractionDigits: 1 })} MB`
   }

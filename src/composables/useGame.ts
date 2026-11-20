@@ -180,8 +180,21 @@ const reasoningTokens = computed(() => usage.value?.reasoning ?? 0)
 
 watch(draft, (value) => {
   if (draftTimer) clearTimeout(draftTimer)
-  draftTimer = setTimeout(() => saveDraft(value), 300)
+  draftTimer = setTimeout(() => {
+    draftTimer = null
+    track(saveDraft(value))
+  }, 300)
 })
+
+// Al cerrar o cambiar de app, guarda al instante el borrador que aún esperaba su turno.
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => {
+    if (!draftTimer) return
+    clearTimeout(draftTimer)
+    draftTimer = null
+    track(saveDraft(draft.value))
+  })
+}
 
 // ---------------------------------------------------------------------------
 // Persistencia
@@ -193,7 +206,7 @@ function reportStorage(ok: boolean) {
     return
   }
   if (!storageFailed.value) {
-    toast('No se pudo guardar la partida: el almacenamiento del navegador está lleno. Exporta tu progreso.', {
+    toast('No se pudo guardar la partida: el almacenamiento del navegador está lleno o bloqueado. Exporta tu progreso.', {
       tone: 'error',
       timeout: 0,
       action: { label: 'Exportar', run: () => exportProgress() },
@@ -202,18 +215,25 @@ function reportStorage(ok: boolean) {
   storageFailed.value = true
 }
 
+/** Las escrituras a IndexedDB son asíncronas: el aviso de error llega al confirmarse el lote. */
+function track(write: Promise<boolean>) {
+  void write.then(reportStorage)
+}
+
 function persistMessages() {
-  reportStorage(saveMessages(messages.value))
+  track(saveMessages(messages.value))
 }
 
 function persistGame() {
-  reportStorage(
-    [saveMessages(messages.value), saveState(gameState.value), saveUsage(usage.value)].every(Boolean),
+  track(
+    Promise.all([saveMessages(messages.value), saveState(gameState.value), saveUsage(usage.value)]).then(
+      (results) => results.every(Boolean),
+    ),
   )
 }
 
 function persistSettings() {
-  reportStorage(saveSettings(settings))
+  track(saveSettings(settings))
 }
 
 // ---------------------------------------------------------------------------
@@ -532,7 +552,7 @@ function newGame() {
   draft.value = ''
   diceGroups.value = defaultDice()
   diceResults.value = null
-  reportStorage(clearGameStorage())
+  track(clearGameStorage())
   requestScroll('bottom')
   diceOpen.value = false
   contextOpen.value = false
@@ -545,7 +565,7 @@ function saveConfig(next: Settings) {
   persistSettings()
   if (modelChanged) {
     usage.value = null
-    saveUsage(null)
+    track(saveUsage(null))
   }
   settingsOpen.value = false
   refreshBrowserVoices()
@@ -589,7 +609,7 @@ function openDice(prefill?: DiceRequest[]) {
 }
 
 function closeDice() {
-  if (!diceResults.value) reportStorage(saveDiceGroups(diceGroups.value))
+  if (!diceResults.value) track(saveDiceGroups(diceGroups.value))
   diceResults.value = null
   diceOpen.value = false
 }
@@ -621,7 +641,7 @@ function rollAndSend(requests: DiceRequest[]): DiceRoll[] {
   vibrateFor(rolls)
   diceResults.value = rolls
   diceOpen.value = true
-  clearDiceGroups()
+  track(clearDiceGroups())
   diceGroups.value = defaultDice()
   void send(messageFor(rolls))
   return rolls
@@ -792,7 +812,7 @@ async function importProgress(file: File) {
   errorMessage.value = ''
   persistSettings()
   persistGame()
-  reportStorage(saveDiceGroups(diceGroups.value))
+  track(saveDiceGroups(diceGroups.value))
   refreshBrowserVoices()
   requestScroll(messages.value.length ? messages.value[messages.value.length - 1].id : 'bottom')
 }

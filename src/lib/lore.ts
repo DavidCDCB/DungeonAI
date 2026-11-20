@@ -91,21 +91,37 @@ Reglas:
 - No añadas introducciones, despedidas ni bloques de código: solo el dossier.`
 
 /** Mensaje del jugador para pedir al modelo un dossier del mundo. */
-export function loreRequest(settings: Pick<Settings, 'world' | 'theme' | 'lore'>): string {
-  const lines = [
+export function loreRequest(settings: Pick<Settings, 'world' | 'theme'>): string {
+  return [
     `Mundo o franquicia: ${settings.world.trim() || 'Mundo original'}`,
     `Tema de la campaña: ${settings.theme.trim() || 'Alta Fantasía'}`,
-  ]
-  const extra = normalizeLore(settings.lore)
-  if (extra) {
-    lines.push(
-      '',
-      'El jugador ya escribió estas notas. Respétalas, intégralas y complétalas:',
-      extra.slice(0, 6_000),
-    )
-  }
-  lines.push('', 'Escribe el dossier de contexto del mundo para el Dungeon Master.')
-  return lines.join('\n')
+    '',
+    'Escribe el dossier de contexto del mundo para el Dungeon Master.',
+  ].join('\n')
+}
+
+export const LORE_FORMAT_SYSTEM_PROMPT = `Eres un editor de dossiers de mundos de ficción para un Dungeon Master de rol. Recibes un texto en bruto (a menudo copiado de una wiki o de una web) y lo reescribes con la plantilla de la app.
+
+Reglas:
+- Usa el texto como única fuente: conserva sus datos concretos (nombres propios, lugares, fechas, relaciones, reglas, cifras) y no inventes ni añadas nada que no esté en él.
+- Reparte la información bajo estos encabezados Markdown de nivel 2, en este orden, con listas breves: ${LORE_HEADINGS.map((item) => `«${item}»`).join(', ')}. Omite los encabezados que no tengan datos en el texto.
+- Elimina el ruido de la web: menús, anuncios, «editar», referencias numéricas como [1], avisos de cookies, enlaces de navegación y repeticiones.
+- Escribe en español: traduce lo que esté en otro idioma, pero deja sin traducir los nombres propios y los términos propios del mundo.
+- Sé denso y neutro, con frases cortas. Si el texto es muy largo, condensa lo accesorio y conserva lo esencial.
+- No añadas introducciones, despedidas ni bloques de código: solo el dossier.`
+
+/** Mensaje del jugador para reescribir su texto con la plantilla. */
+export function loreFormatRequest(settings: Pick<Settings, 'world' | 'theme' | 'lore'>): string {
+  return [
+    `Mundo o franquicia: ${settings.world.trim() || 'Mundo original'}`,
+    `Tema de la campaña: ${settings.theme.trim() || 'Alta Fantasía'}`,
+    '',
+    '<texto>',
+    normalizeLore(settings.lore),
+    '</texto>',
+    '',
+    'Reescribe el texto de arriba con la plantilla del dossier.',
+  ].join('\n')
 }
 
 /** Limpia la respuesta del modelo: quita cercas de código y rechaza el aviso de «sin datos». */

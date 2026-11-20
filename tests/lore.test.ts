@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS } from '../src/types'
 import { buildSystemPrompt, promptBase } from '../src/lib/prompt'
 import {
+  LORE_FORMAT_SYSTEM_PROMPT,
   LORE_HEADINGS,
   LORE_SYSTEM_PROMPT,
   LORE_TEMPLATE,
@@ -9,6 +10,7 @@ import {
   MAX_LORE_CHARS,
   cleanGeneratedLore,
   loreBlock,
+  loreFormatRequest,
   loreRequest,
   loreTokens,
   normalizeLore,
@@ -79,14 +81,29 @@ describe('Utilidades del lore', () => {
     for (const heading of LORE_HEADINGS) expect(LORE_SYSTEM_PROMPT).toContain(heading)
   })
 
-  it('la petición de generación incluye mundo, tema y notas existentes', () => {
-    const request = loreRequest({ world: 'The Witcher', theme: 'Fantasía Oscura', lore: 'Notas: Kaer Morhen.' })
+  it('la petición de generación desde cero incluye mundo y tema', () => {
+    const request = loreRequest({ world: 'The Witcher', theme: 'Fantasía Oscura' })
     expect(request).toContain('Mundo o franquicia: The Witcher')
     expect(request).toContain('Tema de la campaña: Fantasía Oscura')
-    expect(request).toContain('Notas: Kaer Morhen.')
-    const sinNotas = loreRequest({ world: '', theme: '', lore: '' })
-    expect(sinNotas).toContain('Mundo original')
-    expect(sinNotas).not.toContain('ya escribió')
+    expect(loreRequest({ world: '', theme: '' })).toContain('Mundo original')
+  })
+
+  it('el prompt para aplicar la plantilla usa los mismos encabezados y prohíbe inventar', () => {
+    for (const heading of LORE_HEADINGS) expect(LORE_FORMAT_SYSTEM_PROMPT).toContain(heading)
+    expect(LORE_FORMAT_SYSTEM_PROMPT).toMatch(/única fuente/)
+    expect(LORE_FORMAT_SYSTEM_PROMPT).toMatch(/no inventes/)
+    expect(LORE_FORMAT_SYSTEM_PROMPT).toMatch(/Omite los encabezados/)
+  })
+
+  it('la petición de plantilla incluye el texto pegado entre etiquetas y lo limpia', () => {
+    const request = loreFormatRequest({
+      world: 'Elden Ring',
+      theme: 'Fantasía Oscura',
+      lore: '  Los Entrelazados…\r\nMelina guía al Sinluz.  \r\n',
+    })
+    expect(request).toContain('Mundo o franquicia: Elden Ring')
+    expect(request).toContain('<texto>\nLos Entrelazados…\nMelina guía al Sinluz.\n</texto>')
+    expect(request).not.toContain('\r')
   })
 
   it('limpia cercas de código y detecta mundos desconocidos', () => {
@@ -109,6 +126,15 @@ describe('Lore en exportación e importación', () => {
   it('los archivos antiguos sin lore se importan con el lore vacío', () => {
     expect(normalizeSettings({ world: 'Eberron' }).lore).toBe('')
     expect(normalizeSettings({ lore: 42 }).lore).toBe('')
+  })
+
+  it('el esfuerzo del lore tiene valor por defecto y se valida', () => {
+    expect(DEFAULT_SETTINGS.loreReasoning).toBe('medium')
+    expect(normalizeSettings({}).loreReasoning).toBe('medium')
+    expect(normalizeSettings({ loreReasoning: 'xhigh' }).loreReasoning).toBe('xhigh')
+    expect(normalizeSettings({ loreReasoning: 'extremo' }).loreReasoning).toBe('medium')
+    const file = serializeProgress({ ...DEFAULT_SETTINGS, loreReasoning: 'high' }, [], '', null, [])
+    expect(parseProgressJson(JSON.stringify(file)).settings.loreReasoning).toBe('high')
   })
 
   it('recorta un lore desmesurado al importar', () => {

@@ -74,7 +74,7 @@ Tú llevas al personaje y decides el rumbo; la app se encarga de la narración, 
 2. **Conecta tu modelo** en *Ajustes → Conexión*: elige el proveedor, pega la URL, la clave y el modelo, y pulsa **Probar conexión**.
 3. **Crea tu personaje y juega.** Escribe tu acción o elige una de las cinco opciones; el DM narra, pide tiradas y actualiza la memoria.
 
-> **Tu clave, tu partida.** La clave se guarda solo en este navegador y viaja al proveedor a través del proxy de la app; el servidor no la almacena. Las partidas viven en `localStorage` y puedes exportarlas o importarlas en JSON.
+> **Tu clave, tu partida.** La clave se guarda solo en este navegador y viaja al proveedor a través del proxy de la app; el servidor no la almacena. Las partidas viven en IndexedDB y puedes exportarlas o importarlas en JSON.
 
 ## Preguntas frecuentes
 
@@ -85,7 +85,7 @@ No. Dungeon AI no tiene registro: solo necesitas una clave de API del proveedor 
 La app es gratis. El proveedor puede cobrar por tokens según el modelo; con Ollama o LM Studio en tu equipo no hay coste por uso.
 
 **¿Dónde se guarda mi partida?**  
-En el almacenamiento local de tu navegador, con autoguardado. *Ajustes → Datos* muestra el espacio usado y permite exportar o importar la partida.
+En IndexedDB, la base de datos de tu navegador (vía `idb-keyval`), con autoguardado: cada mensaje es un registro y en cada turno solo se escribe lo nuevo. Si vienes de una versión anterior, la primera vez que abras la app tus datos se migran solos desde `localStorage`. *Ajustes → Datos* muestra el espacio usado y la cuota del navegador, y permite exportar o importar la partida.
 
 **¿Puedo jugar sin internet?**  
 La app instalada abre sin conexión y conserva tus partidas. Para narrar, el DM necesita llegar al modelo: si usas uno local, todo ocurre en tu equipo.
@@ -118,8 +118,10 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 
 ### Contexto del mundo (lore)
 - Pestaña **Ajustes → Mundo**: un editor donde escribes lo que el DM debe saber del mundo (cronología, lugares, facciones, PNJs, reglas, vocabulario). Se añade al prompt como **canon**, después de las reglas del DM y antes de la memoria, para que una franquicia de videojuegos, películas o series se narre fiel al original.
-- **Generar con el modelo:** a partir del campo *Mundo* y el *Tema*, el modelo redacta un dossier con encabezados fijos. Respeta y completa tus notas si ya escribiste algo, se puede detener y, si falla o no conoce el mundo, se restaura el texto anterior. Puede equivocarse: revísalo.
-- **Plantilla** con los encabezados recomendados, **Importar texto** (`.txt`/`.md`, p. ej. un resumen de una wiki) y **Vaciar**.
+- **Aplicar plantilla:** si pegas un texto sacado de internet (una wiki, un artículo), el modelo lo reorganiza en las secciones del dossier: usa ese texto como única fuente, conserva sus datos, no inventa, omite las secciones sin información y quita el ruido de la web (menús, referencias `[1]`, avisos de cookies). Con el editor vacío inserta el esqueleto de la plantilla para rellenarlo a mano.
+- **Generar de cero:** a partir del campo *Mundo* y el *Tema*, el modelo redacta un dossier con las mismas secciones. Si ya hay texto, pide confirmación antes de reemplazarlo. Puede equivocarse: revísalo.
+- **Esfuerzo del modelo:** selector `low`–`max` propio del lore (por defecto `medium`), independiente del razonamiento de la partida. Se usa en *Aplicar plantilla* y en *Generar de cero*, y se guarda con los ajustes.
+- Ambas acciones se pueden detener; si fallan o se cancelan vuelve tu texto, y al terminar aparece un aviso con **Deshacer**. También hay **Importar texto** (`.txt`/`.md`) y **Vaciar**.
 - Límite de 80 000 caracteres. El editor muestra los tokens que añade a cada turno y avisa si superan el 25 % de la ventana de contexto. También aparece en el panel de la partida y en el desglose de tokens.
 - El prompt trata el lore como material de consulta: ignora instrucciones de formato que contenga, no lo cita y no revela secretos antes de tiempo. Viaja en la exportación de la partida.
 
@@ -143,7 +145,7 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 
 ### Tus datos
 
-- Autoguardado en `localStorage`, con aviso si el almacenamiento se llena y medidor de uso en *Ajustes → Datos*.
+- Autoguardado en IndexedDB (`idb-keyval`) con migración automática desde `localStorage`, aviso si no se puede guardar y medidor de uso en *Ajustes → Datos*.
 - **Exportar/Importar** la partida en JSON. Por defecto **sin la API key**; al importar un archivo sin clave se conserva la de este navegador.
 
 ### En el móvil
@@ -224,7 +226,8 @@ src/
 │  ├─ messages.ts · options.ts · markdown.ts · ttsText.ts
 │  ├─ lore.ts                 contexto del mundo: bloque del prompt, plantilla, generación
 │  ├─ prompt.ts · commands.ts · providers.ts · contextBudget.ts
-│  └─ storage.ts · transfer.ts · format.ts
+│  ├─ storage.ts              persistencia en IndexedDB: caché, lotes, migración desde localStorage
+│  └─ transfer.ts · format.ts
 ├─ prompts/dungeon_master.md
 └─ types.ts
 tests/                         Vitest: lógica, parser y contrato con el prompt

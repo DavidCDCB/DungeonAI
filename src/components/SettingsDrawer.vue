@@ -9,6 +9,7 @@ import {
   FileText,
   FileUp,
   Globe,
+  LayoutTemplate,
   HardDrive,
   LoaderCircle,
   Plug,
@@ -27,10 +28,10 @@ import {
 import type { Settings } from '../types'
 import { CONTEXT_WINDOWS, DEFAULT_SETTINGS, REASONING_LEVELS } from '../types'
 import { PROVIDERS, providerFor, requiresApiKey } from '../lib/providers'
-import { CancelledError, generateLore, testConnection, type ConnectionTest } from '../lib/api'
+import { CancelledError, formatLore, generateLore, testConnection, type ConnectionTest } from '../lib/api'
 import { LORE_TEMPLATE, LORE_WARN_RATIO, MAX_LORE_CHARS, loreTokens, normalizeLore } from '../lib/lore'
 import { promptBase } from '../lib/prompt'
-import { storageBytes } from '../lib/storage'
+import { storageBytes, storageQuota } from '../lib/storage'
 import { formatBytes, formatNumber } from '../lib/format'
 import { useGame, type SettingsTab } from '../composables/useGame'
 import { useToasts } from '../composables/useToasts'
@@ -105,6 +106,8 @@ const testResult = ref<ConnectionTest | null>(null)
 const includeKey = ref(false)
 const importInput = ref<HTMLInputElement | null>(null)
 const usedBytes = ref(0)
+const quotaBytes = ref<number | null>(null)
+const usedShare = computed(() => (quotaBytes.value ? usedBytes.value / quotaBytes.value : 0))
 const loreFile = ref<HTMLInputElement | null>(null)
 const generating = ref(false)
 let loreAbort: AbortController | null = null
@@ -125,6 +128,7 @@ const customPromptActive = computed(() => Boolean(draft.customPrompt.trim()))
 const loreTokenCount = computed(() => loreTokens(draft.lore))
 const loreShare = computed(() => loreTokenCount.value / Math.max(draft.contextWindow, 1))
 const loreTooBig = computed(() => loreShare.value > LORE_WARN_RATIO)
+const hasLore = computed(() => Boolean(draft.lore.trim()))
 
 function syncProviderId() {
   providerId.value = providerFor(draft.baseUrl).id
@@ -151,6 +155,9 @@ watch(
     testResult.value = null
     showKey.value = false
     usedBytes.value = storageBytes()
+    void storageQuota().then((quota) => {
+      quotaBytes.value = quota
+    })
   },
   { immediate: true },
 )
@@ -209,7 +216,12 @@ async function resetPrompt() {
   if (ok) draft.customPrompt = ''
 }
 
-async function generateLoreText() {
+/**
+ * Pide al modelo el lore: «generate» lo crea desde cero a partir del mundo y el
+ * tema; «format» reescribe con la plantilla el texto que hay en el editor.
+ * Si falla o se cancela, el texto anterior vuelve al editor.
+ */
+async function runLoreJob(kind: 'generate' | 'format') {
   normalizeDraft()
   if (requiresApiKey(draft.baseUrl) && !draft.apiKey) {
     push('Falta la API key para pedirle el contexto al modelo.', { tone: 'warning' })
@@ -221,7 +233,8 @@ async function generateLoreText() {
   loreAbort = controller
   generating.value = true
   try {
-    const text = await generateLore(
+    const task = kind === 'format' ? formatLore : generateLore
+    const text = await task(
       { ...draft },
       {
         signal: controller.signal,
@@ -231,18 +244,52 @@ async function generateLoreText() {
       },
     )
     draft.lore = text
-    push('Contexto generado. Revísalo y corrígelo antes de guardar.', { tone: 'success' })
+    push(
+      kind === 'format'
+        ? 'Plantilla aplicada. Comprueba que no falte nada antes de guardar.'
+        : 'Contexto generado. Revísalo y corrígelo antes de guardar.',
+      {
+        tone: 'success',
+        action: previous.trim()
+          ? { label: 'Deshacer', run: () => { draft.lore = previous } }
+          : undefined,
+      },
+    )
   } catch (loreError) {
     draft.lore = previous
     if (loreError instanceof CancelledError) {
-      push('Generación cancelada.', { tone: 'info' })
+      push('Cancelado. Se restauró tu texto.', { tone: 'info' })
     } else {
-      push((loreError as Error)?.message ?? 'No se pudo generar el contexto.', { tone: 'error' })
+      push((loreError as Error)?.message ?? 'No se pudo completar la petición.', { tone: 'error' })
     }
   } finally {
     generating.value = false
     loreAbort = null
   }
+}
+
+async function generateLoreText() {
+  if (draft.lore.trim()) {
+    const result = await ask({
+      title: '¿Generar desde cero?',
+      message:
+        'El modelo escribirá un contexto nuevo a partir del mundo y el tema, y reemplazará el texto actual. Si quieres conservar tu texto, usa «Aplicar plantilla». Podrás deshacerlo.',
+      confirmLabel: 'Generar y reemplazar',
+      cancelLabel: 'Cancelar',
+      danger: true,
+    })
+    if (result !== 'confirm') return
+  }
+  await runLoreJob('generate')
+}
+
+/** Con texto, el modelo lo reorganiza según la plantilla; vacío, inserta el esqueleto. */
+async function applyTemplate() {
+  if (!draft.lore.trim()) {
+    insertLoreTemplate()
+    return
+  }
+  await runLoreJob('format')
 }
 
 function stopLoreGeneration() {
@@ -622,7 +669,7 @@ async function onInstall() {
           id="lore-text"
           v-model="draft.lore"
           class="field min-h-[190px] resize-y sm:min-h-[300px] text-[13px] leading-6 pointer-coarse:text-base"
-          placeholder="Ej.: Estamos en el Continente poco después de la Tercera Guerra del Norte… (o pulsa «Generar con el modelo» o «Plantilla»)."
+          placeholder="Ej.: Estamos en el Continente poco después de la Tercera Guerra del Norte… (o pulsa «Generar de cero»)."
           :maxlength="MAX_LORE_CHARS"
           :readonly="generating"
           :aria-busy="generating"
@@ -643,23 +690,53 @@ async function onInstall() {
         </p>
       </div>
 
+      <div>
+        <span class="field-label">Esfuerzo del modelo</span>
+        <div class="seg flex-wrap" role="group" aria-label="Esfuerzo de razonamiento para el contexto del mundo">
+          <button
+            v-for="level in REASONING_LEVELS"
+            :key="level"
+            type="button"
+            class="seg-item"
+            :disabled="generating"
+            :aria-pressed="draft.loreReasoning === level"
+            @click="draft.loreReasoning = level"
+          >
+            {{ level }}
+          </button>
+        </div>
+        <p class="field-hint">
+          Se usa al <strong class="text-parchment">generar de cero</strong> y al
+          <strong class="text-parchment">aplicar la plantilla</strong>; no cambia el razonamiento de la
+          partida. <strong class="text-gold">medium</strong> basta casi siempre; sube el esfuerzo con
+          textos muy largos o franquicias poco conocidas.
+        </p>
+      </div>
+
       <div class="flex flex-wrap items-center gap-2">
-        <button
-          v-if="!generating"
-          type="button"
-          class="btn-primary btn-sm"
-          @click="generateLoreText"
-        >
-          <WandSparkles class="h-3.5 w-3.5" />
-          Generar con el modelo
-        </button>
+        <template v-if="!generating">
+          <button
+            type="button"
+            :class="hasLore ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'"
+            :title="hasLore ? 'El modelo reorganiza tu texto con las secciones del dossier' : 'Inserta el esqueleto de la plantilla para rellenarlo a mano'"
+            @click="applyTemplate"
+          >
+            <LayoutTemplate class="h-3.5 w-3.5" />
+            Aplicar plantilla
+          </button>
+          <button
+            type="button"
+            :class="hasLore ? 'btn-secondary btn-sm' : 'btn-primary btn-sm'"
+            title="El modelo escribe el contexto a partir del mundo y el tema"
+            @click="generateLoreText"
+          >
+            <WandSparkles class="h-3.5 w-3.5" />
+            Generar de cero
+          </button>
+        </template>
         <button v-else type="button" class="btn-secondary btn-sm" @click="stopLoreGeneration">
           <Square class="h-3 w-3 fill-current" />
           Detener
-        </button>
-        <button type="button" class="btn-secondary btn-sm" :disabled="generating" @click="insertLoreTemplate">
-          <FileText class="h-3.5 w-3.5" />
-          Plantilla
         </button>
         <button type="button" class="btn-secondary btn-sm" :disabled="generating" @click="loreFile?.click()">
           <FileUp class="h-3.5 w-3.5" />
@@ -682,9 +759,17 @@ async function onInstall() {
           @change="onLoreFile"
         >
       </div>
-      <p class="field-hint !mt-2">
-        «Generar» le pide al modelo un resumen de la franquicia a partir del mundo y el tema; puede
-        equivocarse, así que revisa el resultado. Si ya escribiste notas, las respeta y las completa.
+      <p v-if="hasLore" class="field-hint !mt-2">
+        <strong class="text-parchment">Aplicar plantilla</strong> reorganiza tu texto con el modelo en las
+        secciones del dossier: conserva sus datos, no inventa nada y quita el ruido de la web (menús,
+        referencias, avisos). <strong class="text-parchment">Generar de cero</strong> lo reemplaza por un
+        resumen que escribe el modelo. Ambas se pueden deshacer.
+      </p>
+      <p v-else class="field-hint !mt-2">
+        Pega un texto de la franquicia (por ejemplo de una wiki) y pulsa
+        <strong class="text-parchment">Aplicar plantilla</strong>, o deja que el modelo lo escriba con
+        <strong class="text-parchment">Generar de cero</strong> (puede equivocarse: revísalo). Con el
+        editor vacío, «Aplicar plantilla» inserta el esqueleto para rellenarlo a mano.
       </p>
 
       <div class="rounded-xl border border-divider bg-ink-soft px-3 py-2.5">
@@ -923,15 +1008,16 @@ async function onInstall() {
       <div class="card p-4">
         <p class="text-sm font-medium text-parchment">Almacenamiento</p>
         <p class="mt-1 text-xs leading-5 text-muted">
-          La partida se guarda automáticamente en este navegador. Ocupa
-          <strong class="text-parchment">{{ formatBytes(usedBytes) }}</strong> de unos 5 MB disponibles. Si
-          se llena, exporta la partida.
+          La partida se guarda automáticamente en este navegador (IndexedDB). Ocupa
+          <strong class="text-parchment">{{ formatBytes(usedBytes) }}</strong>
+          <template v-if="quotaBytes">{{ ' ' }}de unos {{ formatBytes(quotaBytes) }} que el navegador concede a esta app</template>.
+          Exportar la partida sigue siendo la mejor copia de seguridad.
         </p>
-        <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-ink-soft">
+        <div v-if="quotaBytes" class="mt-3 h-1.5 overflow-hidden rounded-full bg-ink-soft">
           <div
             class="h-full rounded-full"
-            :class="usedBytes > 4 * 1024 * 1024 ? 'bg-error' : usedBytes > 3 * 1024 * 1024 ? 'bg-warning' : 'bg-gold'"
-            :style="{ width: `${Math.min(100, (usedBytes / (5 * 1024 * 1024)) * 100)}%` }"
+            :class="usedShare > 0.9 ? 'bg-error' : usedShare > 0.7 ? 'bg-warning' : 'bg-gold'"
+            :style="{ width: `${Math.max(1, Math.min(100, usedShare * 100))}%` }"
           />
         </div>
       </div>

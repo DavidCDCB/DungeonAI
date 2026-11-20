@@ -189,6 +189,9 @@ export function normalizeSettings(value: any): Settings {
       : DEFAULT_SETTINGS.readingFont,
     showSecrets: bool('showSecrets', DEFAULT_SETTINGS.showSecrets),
     lore: normalizeLore(text('lore', '')),
+    loreReasoning: REASONING_LEVELS.includes(raw.loreReasoning)
+      ? raw.loreReasoning
+      : DEFAULT_SETTINGS.loreReasoning,
   }
 }
 

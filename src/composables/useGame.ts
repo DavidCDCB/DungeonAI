@@ -528,6 +528,8 @@ async function initCloud() {
   cloudStatus.value = 'loading'
   cloudBusy.value = true
   cloudReady = true
+  let connected = false
+  let needsFirstSave = false
   try {
     const remote = await readCloudSnapshot(stored.code)
     if (remote) {
@@ -551,15 +553,30 @@ async function initCloud() {
       }
     } else {
       cloudStatus.value = 'saved'
-      await flushCloudSave()
+      needsFirstSave = true
     }
-    await subscribeCloud(stored.code)
+    connected = true
   } catch (error) {
     cloudStatus.value = 'error'
     cloudError.value = cloudErrorMessage(error)
   } finally {
+    // «Conectando…» solo dura mientras se lee; el guardado inicial y la suscripción tienen su propio estado.
     cloudBusy.value = false
   }
+  if (!connected) return
+  if (needsFirstSave) await flushCloudSave()
+  await subscribeCloud(stored.code)
+}
+
+/**
+ * Tras un fallo de conexión, vuelve a intentarlo al recuperar la red o al volver a la pestaña
+ * (sin esperar a que el jugador pulse nada).
+ */
+function reconnectCloud() {
+  if (!cloudEnabled.value || cloudBusy.value || cloudStatus.value !== 'error') return
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+  cloudInitialized = false
+  void initCloud()
 }
 
 /**
@@ -622,15 +639,21 @@ async function enableCloud(input = ''): Promise<boolean> {
       cloudRemoteAt.value = null
       cloudStatus.value = 'saved'
     } else {
+      // El primer guardado se muestra como «Guardando…» y no deja los botones bloqueados.
+      cloudBusy.value = false
       await flushCloudSave()
+      if (!cloudEnabled.value) return false // el jugador desconectó mientras tanto
     }
     await subscribeCloud(code)
-    cloudError.value = ''
+    const failed = cloudStatus.value === 'error'
+    if (!failed) cloudError.value = ''
     toast(
-      loadedRemote
-        ? 'Partida cargada desde la nube.'
-        : 'Nube activada. Guarda el código de sincronización.',
-      { tone: 'success' },
+      failed
+        ? 'Nube activada, pero aún no se pudo guardar. Se reintentará al recuperar la conexión.'
+        : loadedRemote
+          ? 'Partida cargada desde la nube.'
+          : 'Nube activada. Guarda el código de sincronización.',
+      { tone: failed ? 'warning' : 'success' },
     )
     return true
   } catch (error) {
@@ -1600,6 +1623,12 @@ function init() {
   }
   refreshBrowserVoices()
   void initCloud()
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', reconnectCloud)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reconnectCloud()
+    })
+  }
 }
 
 export function useGame() {

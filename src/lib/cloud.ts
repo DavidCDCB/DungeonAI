@@ -63,26 +63,47 @@ export function parseCloudSnapshot(value: unknown): CloudSnapshot | null {
   }
 }
 
+/**
+ * Tiempos máximos de espera. El SDK de Firebase no rechaza una lectura o una escritura mientras
+ * no hay conexión (queda a la espera de que vuelva la red), así que sin esto la interfaz se
+ * quedaba en «Conectando…» y el guardado bloqueado para siempre.
+ */
+export const CLOUD_TIMEOUTS = { load: 15_000, read: 12_000, write: 15_000 }
+
+/** Rechaza si `promise` no termina en `ms`. El mensaje contiene «network» para que se trate como fallo de red. */
+export function withTimeout<T>(promise: Promise<T>, ms: number, what = 'Firebase'): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`network: ${what} no respondió en ${Math.round(ms / 1000)} s`)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 export async function readCloudSnapshot(code: string): Promise<CloudSnapshot | null> {
-  const db = await loadDatabase()
+  const db = await withTimeout(loadDatabase(), CLOUD_TIMEOUTS.load, 'Cargar Firebase')
   if (!db) throw new Error('Falta la configuración de Firebase.')
   const { get, ref } = await import('firebase/database')
-  const snapshot = await get(ref(db, cloudPath(code)))
+  const snapshot = await withTimeout(get(ref(db, cloudPath(code))), CLOUD_TIMEOUTS.read, 'La lectura de Firebase')
   return snapshot.exists() ? parseCloudSnapshot(snapshot.val()) : null
 }
 
 /** Guarda el progreso sin API key y devuelve la marca de tiempo del guardado. */
 export async function writeCloudSnapshot(code: string, progress: ProgressFile): Promise<number> {
-  const db = await loadDatabase()
+  const db = await withTimeout(loadDatabase(), CLOUD_TIMEOUTS.load, 'Cargar Firebase')
   if (!db) throw new Error('Falta la configuración de Firebase.')
   const { ref, set } = await import('firebase/database')
   const updatedAt = Date.now()
-  await set(ref(db, cloudPath(code)), {
-    app: CLOUD_APP,
-    version: CLOUD_VERSION,
-    updatedAt,
-    progress,
-  })
+  // Sin conexión, `set` queda en cola y no resuelve: tras el límite se da por fallido y el siguiente guardado lo repite.
+  await withTimeout(
+    set(ref(db, cloudPath(code)), {
+      app: CLOUD_APP,
+      version: CLOUD_VERSION,
+      updatedAt,
+      progress,
+    }),
+    CLOUD_TIMEOUTS.write,
+    'El guardado en Firebase',
+  )
   return updatedAt
 }
 
@@ -96,7 +117,7 @@ export async function watchCloudSnapshot(
   code: string,
   handlers: CloudWatchHandlers,
 ): Promise<() => void> {
-  const db = await loadDatabase()
+  const db = await withTimeout(loadDatabase(), CLOUD_TIMEOUTS.load, 'Cargar Firebase')
   if (!db) throw new Error('Falta la configuración de Firebase.')
   const { onValue, ref } = await import('firebase/database')
   return onValue(

@@ -157,6 +157,7 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 - *Ajustes → Datos → Nube* activa una copia remota en **Firebase Realtime Database**. La app genera un **código de sincronización** de 32 caracteres; guárdalo.
 - Para recuperar la partida en otro dispositivo, abre la app, ve a *Ajustes → Datos*, pega el código y pulsa **Activar nube**. Si este navegador ya tiene partida, se pregunta antes de reemplazarla.
 - La copia se guarda tras cada cambio; la nube es un espejo, no un historial. Si otro dispositivo cambia la partida, aparece un aviso para cargarla. Si dos dispositivos editan a la vez, gana el último guardado. Al abrir con datos en ambos lados no se sobrescribe nada: la app avisa y tú eliges entre **Restaurar** y **Guardar ahora**.
+- **Sin conexión o con red lenta:** cada llamada a Firebase tiene un tiempo límite (12–15 s). Si no responde, la nube pasa a «No se pudo conectar con Firebase» y los botones quedan libres en lugar de quedarse en «Conectando…». Se reintenta sola al recuperar la red o al volver a la pestaña, y con «Guardar ahora».
 - **La API key no se sincroniza**: en un dispositivo nuevo tendrás que introducirla otra vez. El código es la única llave: quien lo tenga puede leer y escribir esa partida, así que no lo compartas.
 
 ### En el móvil

@@ -422,19 +422,25 @@ export async function requestOptions(
 }
 
 /**
+ * Esfuerzo fijo del Cronista de estado: su tarea es puntual y mecánica (anotar lo que cambió)
+ * y bloquea el siguiente turno, así que no necesita razonar como el DM. Si el modelo no admite
+ * `reasoning_effort`, el reintento automático de `chatWithFallback` lo quita.
+ */
+export const MEMORY_EFFORT: Reasoning = 'low'
+
+/**
  * Llamada del Cronista de estado: devuelve el [ESTADO] con las secciones que cambiaron.
- * Usa el mismo esfuerzo que la narración y no hace streaming (nadie lee su texto mientras llega).
+ * Usa siempre `MEMORY_EFFORT` y no hace streaming (nadie lee su texto mientras llega).
  */
 export async function requestMemoryUpdate(
   settings: Settings,
   systemPrompt: string,
   history: ChatMessage[],
-  effort: Reasoning | null,
   signal?: AbortSignal,
 ): Promise<string> {
   const result = await chatWithFallback(settings, systemPrompt, history, {
     stream: false,
-    effort,
+    effort: MEMORY_EFFORT,
     signal,
   })
   return result.content

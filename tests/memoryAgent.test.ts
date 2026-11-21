@@ -9,6 +9,7 @@ import {
   sections,
 } from '../src/lib/gameState'
 import { createMessage, streamingPreview } from '../src/lib/messages'
+import { MEMORY_EFFORT } from '../src/lib/api'
 import { INSTRUCCION_ESTADO, buildStatePrompt, buildSystemPrompt, statePromptBase } from '../src/lib/prompt'
 
 const MEMORIA = [
@@ -140,6 +141,10 @@ describe('Prompt del Cronista', () => {
     expect(buildStatePrompt(DEFAULT_SETTINGS, 'Dinero: 5 PO')).not.toContain('inicio de la campaña')
     expect(statePromptBase).toMatch(/Combate: ninguno/)
     expect(INSTRUCCION_ESTADO).toMatch(/\[ESTADO\]/)
+  })
+
+  it('el Cronista razona siempre con esfuerzo bajo, sea cual sea el del DM', () => {
+    expect(MEMORY_EFFORT).toBe('low')
   })
 
   it('el DM sabe que no escribe el estado y que anota la trama con [TRAMA]', () => {

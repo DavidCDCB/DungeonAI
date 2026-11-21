@@ -931,7 +931,7 @@ function memoryHistory(id: string): ChatMessage[] {
  * Cronista de estado: lee la narración y actualiza la memoria (solo las secciones que cambiaron).
  * Nunca rechaza: si falla avisa, y el siguiente turno repetirá el intento con lo pendiente.
  */
-async function refreshMemory(message: ChatMessage, effort: Reasoning | null): Promise<void> {
+async function refreshMemory(message: ChatMessage): Promise<void> {
   cancelMemory()
   const controller = new AbortController()
   memoryController = controller
@@ -946,7 +946,6 @@ async function refreshMemory(message: ChatMessage, effort: Reasoning | null): Pr
           settings,
           buildStatePrompt(settings, gameState.value),
           [...memoryHistory(message.id), createMessage('user', INSTRUCCION_ESTADO)],
-          effort,
           controller.signal,
         )
         const parsed = parseStateReply(reply)
@@ -999,7 +998,7 @@ function startPostTurn(
     next()
     return
   }
-  const task = refreshMemory(message, effort)
+  const task = refreshMemory(message)
   memoryTask = task
   void task.then(() => {
     if (memoryTask === task) memoryTask = null

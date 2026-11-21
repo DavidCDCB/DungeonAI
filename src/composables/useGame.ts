@@ -341,16 +341,20 @@ function systemPrompt(): string {
 
 function cloudErrorMessage(error: unknown): string {
   const text = (error as Error)?.message ?? ''
+  console.error('Firebase sync error:', error)
   if (/permission|denied/i.test(text)) {
     return 'Firebase rechazó el acceso. Revisa las reglas de Realtime Database.'
   }
   if (/network|offline|unavailable|failed to get/i.test(text)) {
     return 'No se pudo conectar con Firebase. Se reintentará al guardar.'
   }
+  if (/service database is not available/i.test(text)) {
+    return 'Firebase no pudo inicializar Realtime Database. Revisa la configuración del proyecto.'
+  }
   if (/config|api key|database url/i.test(text)) {
     return 'Faltan las variables VITE_FIREBASE_* en este despliegue.'
   }
-  return 'No se pudo sincronizar con la nube.'
+  return 'No se pudo sincronizar con la nube. Revisa la configuración y las reglas.'
 }
 
 function cloudProgress(): ProgressFile {

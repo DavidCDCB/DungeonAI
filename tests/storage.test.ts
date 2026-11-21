@@ -8,6 +8,7 @@ import {
   clearDiceGroups,
   clearGameStorage,
   initStorage,
+  loadCloudSettings,
   loadDiceGroups,
   loadDraft,
   loadMessages,
@@ -15,6 +16,7 @@ import {
   loadState,
   loadUsage,
   resetStorageForTests,
+  saveCloudSettings,
   saveDiceGroups,
   saveDraft,
   saveMessages,
@@ -98,6 +100,19 @@ describe('Persistencia en IndexedDB', () => {
     expect(loadUsage()?.total).toBe(3)
     expect(loadDiceGroups()).toEqual([{ die: 'd20', count: '2', bonus: '3' }])
     expect(loadDraft()).toBe('mi borrador')
+  })
+
+  it('guarda el código de sincronización aparte y no lo borra al reiniciar la partida', async () => {
+    await initStorage(fakeLocal())
+    expect(loadCloudSettings()).toEqual({ enabled: false, code: '' })
+    const code = 'a'.repeat(32)
+    expect(await saveCloudSettings({ enabled: true, code })).toBe(true)
+
+    await restart()
+    expect(loadCloudSettings()).toEqual({ enabled: true, code })
+
+    await clearGameStorage()
+    expect(loadCloudSettings()).toEqual({ enabled: true, code })
   })
 
   it('guarda cada mensaje como un registro y solo escribe lo que cambió', async () => {

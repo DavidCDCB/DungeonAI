@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "saves": {
+      "$code": {
+        ".read": "$code.matches(/^[a-f0-9]{32}$/)",
+        ".write": "$code.matches(/^[a-f0-9]{32}$/)",
+        ".validate": "newData.val() === null || (newData.hasChildren(['app', 'version', 'updatedAt', 'progress']) && newData.child('app').val() === 'dungeon-ai-web' && newData.child('version').isNumber() && newData.child('updatedAt').isNumber())"
+      }
+    }
+  }
+}

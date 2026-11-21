@@ -22,6 +22,8 @@ const SCHEMA_KEY = 'meta:schema'
 const SCHEMA_VERSION = 2
 const MESSAGE_PREFIX = 'msg:'
 const INDEX_KEY = 'messages'
+const CLOUD_ENABLED_KEY = 'cloud:enabled'
+const CLOUD_CODE_KEY = 'cloud:code'
 const LEGACY_PREFIX = 'dungeon-ai-web:'
 const LEGACY_KEYS = ['settings', 'messages', 'state', 'usage', 'dice', 'draft']
 
@@ -32,6 +34,11 @@ interface StoredMessage {
   role?: string
   content?: string
   memory?: unknown
+}
+
+export interface CloudSettings {
+  enabled: boolean
+  code: string
 }
 
 let store: UseStore | null = null
@@ -330,6 +337,21 @@ export function loadDraft(): string {
 
 export function saveDraft(draft: string): Promise<boolean> {
   return enqueue([draft ? { key: 'draft', value: draft } : { key: 'draft', remove: true }])
+}
+
+/** La nube (código de sincronización) vive aparte de los ajustes de la partida. */
+export function loadCloudSettings(): CloudSettings {
+  assertReady()
+  const enabled = cache.get(CLOUD_ENABLED_KEY) === true
+  const code = cache.get(CLOUD_CODE_KEY)
+  return { enabled, code: typeof code === 'string' ? code : '' }
+}
+
+export function saveCloudSettings(value: CloudSettings): Promise<boolean> {
+  return enqueue([
+    { key: CLOUD_ENABLED_KEY, value: value.enabled },
+    value.code ? { key: CLOUD_CODE_KEY, value: value.code } : { key: CLOUD_CODE_KEY, remove: true },
+  ])
 }
 
 /** Borra la partida (mensajes, memoria, uso, dados y borrador) y conserva los ajustes. */

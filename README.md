@@ -45,7 +45,8 @@ Tú llevas al personaje y decides el rumbo; la app se encarga de la narración, 
 | 📱 **App instalable** | PWA que se instala desde el navegador y abre sin conexión. En el móvil, el compositor se adapta al teclado y la lectura está pensada para pantallas estrechas. |
 | 🔌 **Tu modelo, tus reglas** | Proveedores OpenAI-compatibles, ventana de contexto de 32k a 1M, detección automática y reintentos según lo que soporte el modelo. |
 | 🪶 **Prompt a tu medida** | Reemplaza el prompt del Dungeon Master desde *Ajustes → Prompt*, con marcadores de campaña y opción de volver al original. Viaja en la exportación. |
-| 🔒 **Privado por diseño** | La clave y las partidas viven en tu navegador. El servidor no almacena la clave, y puedes exportar la partida en JSON cuando quieras. |
+| ☁️ **Nube opcional** | Copia la partida en Firebase Realtime Database con un código de sincronización para recuperarla en otro dispositivo. La API key nunca se sube. |
+| 🔒 **Privado por diseño** | La clave vive solo en tu navegador y el servidor no la almacena. La nube es opcional y nunca incluye la API key; puedes exportar la partida en JSON cuando quieras. |
 
 ## Capturas
 
@@ -85,7 +86,7 @@ No. Dungeon AI no tiene registro: solo necesitas una clave de API del proveedor 
 La app es gratis. El proveedor puede cobrar por tokens según el modelo; con Ollama o LM Studio en tu equipo no hay coste por uso.
 
 **¿Dónde se guarda mi partida?**  
-En IndexedDB, la base de datos de tu navegador (vía `idb-keyval`), con autoguardado: cada mensaje es un registro y en cada turno solo se escribe lo nuevo. Si vienes de una versión anterior, la primera vez que abras la app tus datos se migran solos desde `localStorage`. *Ajustes → Datos* muestra el espacio usado y la cuota del navegador, y permite exportar o importar la partida.
+En IndexedDB, la base de datos de tu navegador (vía `idb-keyval`), con autoguardado: cada mensaje es un registro y en cada turno solo se escribe lo nuevo. Si vienes de una versión anterior, la primera vez que abras la app tus datos se migran solos desde `localStorage`. *Ajustes → Datos* muestra el espacio usado y la cuota del navegador, permite exportar o importar la partida y, si activas la nube, guarda además una copia en Firebase.
 
 **¿Puedo jugar sin internet?**  
 La app instalada abre sin conexión y conserva tus partidas. Para narrar, el DM necesita llegar al modelo: si usas uno local, todo ocurre en tu equipo.
@@ -151,6 +152,13 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 - Autoguardado en IndexedDB (`idb-keyval`) con migración automática desde `localStorage`, aviso si no se puede guardar y medidor de uso en *Ajustes → Datos*.
 - **Exportar/Importar** la partida en JSON. Por defecto **sin la API key**; al importar un archivo sin clave se conserva la de este navegador.
 
+### Nube opcional (Firebase)
+
+- *Ajustes → Datos → Nube* activa una copia remota en **Firebase Realtime Database**. La app genera un **código de sincronización** de 32 caracteres; guárdalo.
+- Para recuperar la partida en otro dispositivo, abre la app, ve a *Ajustes → Datos*, pega el código y pulsa **Activar nube**. Si este navegador ya tiene partida, se pregunta antes de reemplazarla.
+- La copia se guarda tras cada cambio; la nube es un espejo, no un historial. Si otro dispositivo cambia la partida, aparece un aviso para cargarla. Si dos dispositivos editan a la vez, gana el último guardado. Al abrir con datos en ambos lados no se sobrescribe nada: la app avisa y tú eliges entre **Restaurar** y **Guardar ahora**.
+- **La API key no se sincroniza**: en un dispositivo nuevo tendrás que introducirla otra vez. El código es la única llave: quien lo tenga puede leer y escribir esa partida, así que no lo compartas.
+
 ### En el móvil
 
 - El teclado encoge la app (`interactive-widget=resizes-content`): el compositor queda sobre el teclado y el chat sigue anclado al final.
@@ -191,7 +199,16 @@ Abre `http://localhost:5173`. La primera vez se abre **Ajustes → Conexión** p
 
 ### Stack
 
-**Vite + Vue 3 + TypeScript + Tailwind CSS 4**, con `vite-plugin-pwa` para el service worker y el manifest, y **Vitest** para las pruebas. Sin backend propio: un rewrite de Vercel hace de proxy para OpenCode.
+**Vite + Vue 3 + TypeScript + Tailwind CSS 4**, con `vite-plugin-pwa` para el service worker y el manifest, **Vitest** para las pruebas y **Firebase RTDB** opcional (cargado bajo demanda). Sin backend propio: un rewrite de Vercel hace de proxy para OpenCode.
+
+### Nube con Firebase (opcional)
+
+1. Crea un proyecto en Firebase y activa **Realtime Database**.
+2. Copia `.env.example` a `.env.local` y rellena `VITE_FIREBASE_*`. `VITE_FIREBASE_DATABASE_URL` es la URL de tu instancia (por ejemplo, `https://tu-proyecto-default-rtdb.firebaseio.com`).
+3. Publica las reglas de `database.rules.json` en la consola de Firebase (*Realtime Database → Reglas*) o con `firebase deploy --only database` (el `firebase.json` ya apunta al archivo).
+4. En Vercel, añade las mismas variables de entorno.
+
+Las reglas permiten leer y escribir solo bajo `/saves/{code}`, donde `code` es un hexadecimal de 32 caracteres. El código actúa como llave de la partida. Para un despliegue público, considera activar **Firebase App Check** y limita el uso del proyecto. Si restringes la API key en Google Cloud, autoriza `localhost` y tu dominio de producción. Si faltan las variables, la app funciona igual y la sección Nube queda desactivada.
 
 ### Scripts
 
@@ -223,6 +240,8 @@ src/
 │  ├─ usePwa.ts · useToasts.ts · useConfirm.ts · useDialogStack.ts
 ├─ lib/
 │  ├─ api.ts                  cliente OpenAI-compatible con streaming y reintentos
+│  ├─ cloud.ts                código de sincronización y snapshots de Firebase RTDB
+│  ├─ firebase.ts             configuración y carga diferida del SDK de Firebase
 │  ├─ sse.ts                  parser SSE y lectura de errores de contexto
 │  ├─ dice.ts                 tiradas, modos, sugerencias y lectura de resultados
 │  ├─ gameState.ts            memoria [ESTADO], secciones e instantáneas
@@ -235,7 +254,7 @@ src/
 ├─ prompts/dungeon_master.md
 └─ types.ts
 tests/                         Vitest: lógica, parser y contrato con el prompt
-vercel.json · pwa-assets.config.ts · .vercelignore
+database.rules.json · firebase.json · .env.example · vercel.json · pwa-assets.config.ts · .vercelignore
 ```
 
 ### El contrato del Dungeon Master

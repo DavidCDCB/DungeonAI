@@ -27,7 +27,21 @@ import {
 import { INSTRUCCION_REPARACION, buildSystemPrompt } from '../lib/prompt'
 import { requiresApiKey } from '../lib/providers'
 import { isContextError } from '../lib/sse'
-import { downloadProgress, parseProgressFile, serializeProgress } from '../lib/transfer'
+import {
+  cloudConfigured,
+  isValidSyncCode,
+  newSyncCode,
+  normalizeSyncCode,
+  readCloudSnapshot,
+  watchCloudSnapshot,
+  writeCloudSnapshot,
+} from '../lib/cloud'
+import {
+  downloadProgress,
+  parseProgressFile,
+  serializeProgress,
+  type ProgressFile,
+} from '../lib/transfer'
 import { chunkForSpeech, cleanForSpeech } from '../lib/ttsText'
 import { estimateOffset, spokenWords, wordIndexAt } from '../lib/speechHighlight'
 import { formatTokens } from '../lib/format'
@@ -36,12 +50,14 @@ import { createPaceMeter } from '../lib/pace'
 import {
   clearDiceGroups,
   clearGameStorage,
+  loadCloudSettings,
   loadDiceGroups,
   loadDraft,
   loadMessages,
   loadSettings,
   loadState,
   loadUsage,
+  saveCloudSettings,
   saveDiceGroups,
   saveDraft,
   saveMessages,
@@ -49,11 +65,13 @@ import {
   saveState,
   saveUsage,
 } from '../lib/storage'
+import { useConfirm } from './useConfirm'
 import { useToasts } from './useToasts'
 
 export type SettingsTab = 'connection' | 'campaign' | 'world' | 'prompt' | 'reading' | 'data'
 
 const { push: toast } = useToasts()
+const { ask: confirmAction } = useConfirm()
 
 const settings = reactive<Settings>(loadSettings(DEFAULT_SETTINGS))
 const messages = ref<ChatMessage[]>(loadMessages())
@@ -76,6 +94,15 @@ const errorMessage = ref('')
 const errorKind = ref<'error' | 'cancelled'>('error')
 const storageFailed = ref(false)
 const announcement = ref('')
+
+// Nube (Firebase RTDB): la partida local sigue siendo la fuente; la nube es un espejo.
+const cloudEnabled = ref(false)
+const cloudCode = ref('')
+const cloudStatus = ref<'disabled' | 'loading' | 'saving' | 'saved' | 'error'>('disabled')
+const cloudError = ref('')
+const cloudLastSaved = ref<number | null>(null)
+const cloudRemoteAt = ref<number | null>(null)
+const cloudBusy = ref(false)
 
 const settingsOpen = ref(false)
 const settingsTab = ref<SettingsTab>('connection')
@@ -108,6 +135,16 @@ let clock: ReturnType<typeof setInterval> | null = null
 let draftTimer: ReturnType<typeof setTimeout> | null = null
 let pendingProgress: StreamProgress | null = null
 let progressFrame = 0
+
+let cloudInitialized = false
+let cloudReady = false
+let cloudTimer: ReturnType<typeof setTimeout> | null = null
+let cloudUnsubscribe: (() => void) | null = null
+let cloudSaving = false
+let cloudDirty = false
+let cloudApplying = false
+let cloudLocalWriteAt = 0
+let cloudNotifiedAt = 0
 
 // ---------------------------------------------------------------------------
 // Derivados
@@ -203,10 +240,19 @@ watch(draft, (value) => {
 // Al cerrar o cambiar de app, guarda al instante el borrador que aún esperaba su turno.
 if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', () => {
-    if (!draftTimer) return
-    clearTimeout(draftTimer)
-    draftTimer = null
-    track(saveDraft(draft.value))
+    if (draftTimer) {
+      clearTimeout(draftTimer)
+      draftTimer = null
+      track(saveDraft(draft.value))
+    }
+    void flushCloudSave()
+  })
+}
+
+// La pestaña en segundo plano también intenta confirmar la última copia en la nube.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void flushCloudSave()
   })
 }
 
@@ -236,6 +282,7 @@ function track(write: Promise<boolean>) {
 
 function persistMessages() {
   track(saveMessages(messages.value))
+  scheduleCloudSave()
 }
 
 function persistGame() {
@@ -244,10 +291,12 @@ function persistGame() {
       (results) => results.every(Boolean),
     ),
   )
+  scheduleCloudSave()
 }
 
 function persistSettings() {
   track(saveSettings(settings))
+  scheduleCloudSave()
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +333,310 @@ function ensureConfigured(): boolean {
 
 function systemPrompt(): string {
   return buildSystemPrompt(settings, gameState.value)
+}
+
+// ---------------------------------------------------------------------------
+// Nube (Firebase Realtime Database)
+// ---------------------------------------------------------------------------
+
+function cloudErrorMessage(error: unknown): string {
+  const text = (error as Error)?.message ?? ''
+  if (/permission|denied/i.test(text)) {
+    return 'Firebase rechazó el acceso. Revisa las reglas de Realtime Database.'
+  }
+  if (/network|offline|unavailable|failed to get/i.test(text)) {
+    return 'No se pudo conectar con Firebase. Se reintentará al guardar.'
+  }
+  if (/config|api key|database url/i.test(text)) {
+    return 'Faltan las variables VITE_FIREBASE_* en este despliegue.'
+  }
+  return 'No se pudo sincronizar con la nube.'
+}
+
+function cloudProgress(): ProgressFile {
+  return serializeProgress(settings, messages.value, gameState.value, usage.value, diceGroups.value, {
+    includeApiKey: false,
+  })
+}
+
+function scheduleCloudSave(immediate = false) {
+  if (!cloudReady || !cloudEnabled.value || !cloudCode.value || cloudApplying) return
+  if (cloudTimer) {
+    clearTimeout(cloudTimer)
+    cloudTimer = null
+  }
+  if (immediate) {
+    void flushCloudSave()
+    return
+  }
+  cloudTimer = setTimeout(() => {
+    cloudTimer = null
+    void flushCloudSave()
+  }, 1_200)
+}
+
+async function flushCloudSave(): Promise<boolean> {
+  if (!cloudReady || !cloudEnabled.value || !cloudCode.value) return false
+  if (cloudSaving) {
+    cloudDirty = true
+    return false
+  }
+  cloudSaving = true
+  cloudStatus.value = 'saving'
+  try {
+    cloudLocalWriteAt = Date.now()
+    const updatedAt = await writeCloudSnapshot(cloudCode.value, cloudProgress())
+    cloudLocalWriteAt = updatedAt
+    cloudLastSaved.value = updatedAt
+    cloudRemoteAt.value = null
+    cloudStatus.value = 'saved'
+    cloudError.value = ''
+    return true
+  } catch (error) {
+    cloudStatus.value = 'error'
+    cloudError.value = cloudErrorMessage(error)
+    return false
+  } finally {
+    cloudSaving = false
+    if (cloudDirty) {
+      cloudDirty = false
+      void flushCloudSave()
+    }
+  }
+}
+
+async function subscribeCloud(code: string) {
+  cloudUnsubscribe?.()
+  cloudUnsubscribe = null
+  try {
+    cloudUnsubscribe = await watchCloudSnapshot(code, {
+      onSnapshot: (snapshot) => {
+        if (!snapshot || cloudApplying) return
+        const known = Math.max(cloudLastSaved.value ?? 0, cloudLocalWriteAt)
+        if (cloudSaving || snapshot.updatedAt <= known || snapshot.updatedAt <= cloudNotifiedAt) return
+        cloudNotifiedAt = snapshot.updatedAt
+        cloudRemoteAt.value = snapshot.updatedAt
+        toast('Hay una versión nueva de la partida en la nube.', {
+          tone: 'info',
+          action: {
+            label: 'Cargar',
+            run: () => {
+              void restoreFromCloud(true)
+            },
+          },
+        })
+      },
+      onError: (error) => {
+        cloudStatus.value = 'error'
+        cloudError.value = cloudErrorMessage(error)
+      },
+    })
+  } catch (error) {
+    cloudStatus.value = 'error'
+    cloudError.value = cloudErrorMessage(error)
+  }
+}
+
+function applyCloudProgress(progress: ProgressFile) {
+  cloudApplying = true
+  try {
+    // La nube nunca debe introducir una API key, aunque alguien haya editado el nodo.
+    applyProgressData({
+      ...progress,
+      settings: { ...progress.settings, apiKey: '' },
+    })
+  } finally {
+    cloudApplying = false
+  }
+}
+
+async function initCloud() {
+  if (cloudInitialized) return
+  cloudInitialized = true
+  const stored = loadCloudSettings()
+  cloudCode.value = stored.code
+  cloudEnabled.value = Boolean(
+    cloudConfigured && stored.enabled && isValidSyncCode(stored.code),
+  )
+  if (!cloudEnabled.value) {
+    cloudStatus.value = 'disabled'
+    return
+  }
+  cloudStatus.value = 'loading'
+  cloudBusy.value = true
+  cloudReady = true
+  try {
+    const remote = await readCloudSnapshot(stored.code)
+    if (remote) {
+      if (!messages.value.length) {
+        applyCloudProgress(remote.progress)
+        cloudLastSaved.value = remote.updatedAt
+        cloudStatus.value = 'saved'
+      } else {
+        cloudLastSaved.value = Math.max(remote.updatedAt, cloudLastSaved.value ?? 0)
+        cloudRemoteAt.value = remote.updatedAt
+        cloudStatus.value = 'saved'
+        toast('Hay una partida guardada en la nube.', {
+          tone: 'info',
+          action: {
+            label: 'Restaurar',
+            run: () => {
+              void restoreFromCloud(true)
+            },
+          },
+        })
+      }
+    } else {
+      cloudStatus.value = 'saved'
+      await flushCloudSave()
+    }
+    await subscribeCloud(stored.code)
+  } catch (error) {
+    cloudStatus.value = 'error'
+    cloudError.value = cloudErrorMessage(error)
+  } finally {
+    cloudBusy.value = false
+  }
+}
+
+/**
+ * Activa la nube con un código existente o genera uno nuevo.
+ * Si la nube ya tiene partida y este navegador también, se pregunta antes de pisar.
+ */
+async function enableCloud(input = ''): Promise<boolean> {
+  if (!cloudConfigured) {
+    toast('Firebase no está configurado en este despliegue.', { tone: 'warning' })
+    return false
+  }
+  if (loading.value) {
+    toast('Espera a que termine el turno antes de activar la nube.', { tone: 'warning' })
+    return false
+  }
+  if (cloudEnabled.value) return true
+  cloudNotifiedAt = 0
+  cloudLocalWriteAt = 0
+  const provided = input.trim()
+  let code: string
+  try {
+    code = provided ? normalizeSyncCode(provided) : newSyncCode()
+  } catch (error) {
+    toast((error as Error)?.message ?? 'No se pudo generar el código.', { tone: 'error' })
+    return false
+  }
+  if (!isValidSyncCode(code)) {
+    toast('El código debe tener 32 caracteres hexadecimales (0-9, a-f).', { tone: 'error' })
+    return false
+  }
+  cloudBusy.value = true
+  try {
+    const hadLocal = messages.value.length > 0
+    const remote = provided ? await readCloudSnapshot(code) : null
+    let loadedRemote = false
+    if (remote) {
+      if (!hadLocal) {
+        applyCloudProgress(remote.progress)
+        loadedRemote = true
+      } else {
+        const result = await confirmAction({
+          title: 'Hay una partida en la nube',
+          message:
+            'Este código ya tiene una partida. ¿Quieres cargarla y reemplazar la de este navegador? Si eliges mantener la local, la nube se sobrescribirá con tu partida actual.',
+          confirmLabel: 'Cargar de la nube',
+          cancelLabel: 'Mantener la local',
+        })
+        if (result === 'confirm') {
+          applyCloudProgress(remote.progress)
+          loadedRemote = true
+        }
+      }
+    }
+    cloudEnabled.value = true
+    cloudCode.value = code
+    cloudReady = true
+    await saveCloudSettings({ enabled: true, code })
+    if (loadedRemote) {
+      cloudLastSaved.value = remote?.updatedAt ?? 0
+      cloudRemoteAt.value = null
+      cloudStatus.value = 'saved'
+    } else {
+      await flushCloudSave()
+    }
+    await subscribeCloud(code)
+    cloudError.value = ''
+    toast(
+      loadedRemote
+        ? 'Partida cargada desde la nube.'
+        : 'Nube activada. Guarda el código de sincronización.',
+      { tone: 'success' },
+    )
+    return true
+  } catch (error) {
+    cloudStatus.value = 'error'
+    cloudError.value = cloudErrorMessage(error)
+    toast(cloudErrorMessage(error), { tone: 'error' })
+    return false
+  } finally {
+    cloudBusy.value = false
+  }
+}
+
+async function disableCloud(): Promise<void> {
+  if (cloudTimer) {
+    clearTimeout(cloudTimer)
+    cloudTimer = null
+  }
+  cloudUnsubscribe?.()
+  cloudUnsubscribe = null
+  cloudEnabled.value = false
+  cloudStatus.value = 'disabled'
+  cloudLastSaved.value = null
+  cloudRemoteAt.value = null
+  cloudError.value = ''
+  cloudReady = false
+  await saveCloudSettings({ enabled: false, code: cloudCode.value })
+  toast('Sincronización en la nube desactivada. El código se conserva.', { tone: 'info' })
+}
+
+async function restoreFromCloud(confirm = true): Promise<boolean> {
+  if (!cloudConfigured || !isValidSyncCode(cloudCode.value)) return false
+  if (loading.value) {
+    toast('Espera a que termine el turno antes de restaurar.', { tone: 'warning' })
+    return false
+  }
+  cloudBusy.value = true
+  try {
+    const remote = await readCloudSnapshot(cloudCode.value)
+    if (!remote) {
+      toast('No hay ninguna partida guardada con este código.', { tone: 'warning' })
+      return false
+    }
+    if (confirm && messages.value.length) {
+      const result = await confirmAction({
+        title: '¿Restaurar desde la nube?',
+        message:
+          'Se reemplazará la partida, la memoria y los ajustes de este navegador por la copia de la nube. La API key local se conserva.',
+        confirmLabel: 'Restaurar',
+        cancelLabel: 'Cancelar',
+        danger: true,
+      })
+      if (result !== 'confirm') return false
+    }
+    applyCloudProgress(remote.progress)
+    cloudLastSaved.value = remote.updatedAt
+    cloudRemoteAt.value = null
+    cloudNotifiedAt = remote.updatedAt
+    cloudStatus.value = 'saved'
+    cloudError.value = ''
+    toast('Partida restaurada desde la nube.', { tone: 'success' })
+    return true
+  } catch (error) {
+    cloudStatus.value = 'error'
+    cloudError.value = cloudErrorMessage(error)
+    toast(cloudErrorMessage(error), { tone: 'error' })
+    return false
+  } finally {
+    cloudBusy.value = false
+  }
 }
 
 function friendlyError(error: unknown): string {
@@ -576,6 +929,10 @@ function newGame() {
   diceOpen.value = false
   contextOpen.value = false
   memoryOpen.value = false
+  if (cloudEnabled.value) {
+    scheduleCloudSave(true)
+    toast('La copia en la nube también se reiniciará.', { tone: 'info' })
+  }
 }
 
 function saveConfig(next: Settings) {
@@ -628,7 +985,10 @@ function openDice(prefill?: DiceRequest[]) {
 }
 
 function closeDice() {
-  if (!diceResults.value) track(saveDiceGroups(diceGroups.value))
+  if (!diceResults.value) {
+    track(saveDiceGroups(diceGroups.value))
+    scheduleCloudSave()
+  }
   diceResults.value = null
   diceOpen.value = false
 }
@@ -928,15 +1288,12 @@ function exportProgress(includeApiKey = false) {
   )
 }
 
-async function importProgress(file: File) {
-  if (loading.value) {
-    throw new Error('Espera a que el Dungeon Master termine el turno antes de importar.')
-  }
-  const data = await parseProgressFile(file)
+/** Aplica un progreso ya validado, venga de un archivo o de la nube. */
+function applyProgressData(data: ProgressFile) {
   stopSpeech()
   const currentKey = settings.apiKey
   Object.assign(settings, data.settings)
-  // Un archivo exportado sin key conserva la key de este navegador.
+  // Un archivo o una copia sin key conserva la key de este navegador.
   if (!settings.apiKey.trim() && currentKey.trim()) settings.apiKey = currentKey
   messages.value = data.messages.map((item) => {
     const message = createMessage(item.role, item.content)
@@ -954,6 +1311,15 @@ async function importProgress(file: File) {
   requestScroll(messages.value.length ? messages.value[messages.value.length - 1].id : 'bottom')
 }
 
+async function importProgress(file: File) {
+  if (loading.value) {
+    throw new Error('Espera a que el Dungeon Master termine el turno antes de importar.')
+  }
+  const data = await parseProgressFile(file)
+  applyProgressData(data)
+  scheduleCloudSave(true)
+}
+
 // ---------------------------------------------------------------------------
 // Arranque
 // ---------------------------------------------------------------------------
@@ -966,6 +1332,7 @@ function init() {
     requestScroll(messages.value[messages.value.length - 1].id)
   }
   refreshBrowserVoices()
+  void initCloud()
 }
 
 export function useGame() {
@@ -988,6 +1355,14 @@ export function useGame() {
     errorKind,
     storageFailed,
     announcement,
+    cloudConfigured,
+    cloudEnabled,
+    cloudCode,
+    cloudStatus,
+    cloudError,
+    cloudLastSaved,
+    cloudRemoteAt,
+    cloudBusy,
     settingsOpen,
     settingsTab,
     diceOpen,
@@ -1031,6 +1406,10 @@ export function useGame() {
     openSettings,
     exportProgress,
     importProgress,
+    enableCloud,
+    disableCloud,
+    restoreFromCloud,
+    flushCloudSave,
     openDice,
     closeDice,
     rollAndSend,

@@ -32,6 +32,7 @@ const {
   focusComposer,
   exportProgress,
   speakingId,
+  cloudEnabled,
 } = useGame()
 
 // Pantalla encendida mientras el DM piensa, escribe o lee en voz alta.
@@ -57,8 +58,9 @@ watchEffect(() => {
 async function confirmNewGame() {
   const result = await ask({
     title: '¿Empezar una nueva partida?',
-    message:
-      'Se borrarán la conversación, la memoria de la partida y los contadores de este navegador. Los ajustes se conservan.',
+    message: cloudEnabled.value
+      ? 'Se borrarán la conversación, la memoria de la partida y los contadores de este navegador, y también se reiniciará la copia en la nube. Los ajustes se conservan.'
+      : 'Se borrarán la conversación, la memoria de la partida y los contadores de este navegador. Los ajustes se conservan.',
     confirmLabel: 'Borrar y empezar',
     secondaryLabel: 'Exportar y empezar',
     danger: true,

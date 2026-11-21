@@ -3,6 +3,10 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import {
   BookOpen,
   CheckCircle2,
+  Cloud,
+  CloudDownload,
+  CloudUpload,
+  Copy,
   Download,
   Eye,
   EyeOff,
@@ -11,6 +15,7 @@ import {
   Globe,
   LayoutTemplate,
   HardDrive,
+  Link2,
   LoaderCircle,
   Plug,
   RefreshCw,
@@ -20,6 +25,7 @@ import {
   Smartphone,
   Sparkles,
   Square,
+  Unlink,
   Upload,
   Volume2,
   WandSparkles,
@@ -29,6 +35,7 @@ import type { Settings } from '../types'
 import { CONTEXT_WINDOWS, DEFAULT_SETTINGS, REASONING_LEVELS } from '../types'
 import { PROVIDERS, providerFor, requiresApiKey } from '../lib/providers'
 import { CancelledError, formatLore, generateLore, testConnection, type ConnectionTest } from '../lib/api'
+import { formatSyncCode } from '../lib/cloud'
 import { LORE_TEMPLATE, LORE_WARN_RATIO, MAX_LORE_CHARS, loreTokens, normalizeLore } from '../lib/lore'
 import { promptBase } from '../lib/prompt'
 import { storageBytes, storageQuota } from '../lib/storage'
@@ -50,6 +57,18 @@ const {
   saveConfig,
   exportProgress,
   importProgress,
+  enableCloud,
+  disableCloud,
+  restoreFromCloud,
+  flushCloudSave,
+  cloudConfigured,
+  cloudEnabled,
+  cloudCode,
+  cloudStatus,
+  cloudError,
+  cloudLastSaved,
+  cloudRemoteAt,
+  cloudBusy,
   previewVoice,
   stopSpeech,
 } = useGame()
@@ -110,6 +129,15 @@ const quotaBytes = ref<number | null>(null)
 const usedShare = computed(() => (quotaBytes.value ? usedBytes.value / quotaBytes.value : 0))
 const loreFile = ref<HTMLInputElement | null>(null)
 const generating = ref(false)
+const cloudCodeInput = ref('')
+const cloudSavedAt = computed(() => {
+  if (!cloudLastSaved.value) return ''
+  const date = new Date(cloudLastSaved.value)
+  const time = date.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
+  return date.toDateString() === new Date().toDateString()
+    ? time
+    : `${date.toLocaleDateString('es')} ${time}`
+})
 let loreAbort: AbortController | null = null
 
 const providerHint = computed(() => PROVIDERS.find((item) => item.id === providerId.value)?.hint ?? '')
@@ -155,6 +183,8 @@ watch(
     testResult.value = null
     showKey.value = false
     usedBytes.value = storageBytes()
+    cloudCodeInput.value =
+      !cloudEnabled.value && cloudCode.value ? formatSyncCode(cloudCode.value) : ''
     void storageQuota().then((quota) => {
       quotaBytes.value = quota
     })
@@ -384,6 +414,36 @@ function onExport() {
   } catch (exportError) {
     push(`No se pudo exportar: ${(exportError as Error)?.message ?? 'error'}`, { tone: 'error' })
   }
+}
+
+async function onEnableCloud() {
+  if (await enableCloud(cloudCodeInput.value)) cloudCodeInput.value = ''
+}
+
+async function copyCloudCode() {
+  const text = formatSyncCode(cloudCode.value)
+  try {
+    await navigator.clipboard.writeText(text)
+    push('Código copiado. Guárdalo para recuperar la partida en otro dispositivo.', { tone: 'success' })
+  } catch {
+    push(`No se pudo copiar. Código: ${text}`, { tone: 'warning', timeout: 0 })
+  }
+}
+
+async function onSaveCloud() {
+  if (cloudStatus.value === 'saving') {
+    push('La partida ya se está guardando en la nube.', { tone: 'info' })
+    return
+  }
+  const saved = await flushCloudSave()
+  push(saved ? 'Partida guardada en la nube.' : cloudError.value || 'No se pudo guardar en la nube.', {
+    tone: saved ? 'success' : 'error',
+  })
+}
+
+async function onDisableCloud() {
+  await disableCloud()
+  cloudCodeInput.value = formatSyncCode(cloudCode.value)
 }
 
 function onImportClick() {
@@ -986,6 +1046,125 @@ async function onInstall() {
       aria-labelledby="tab-data"
       class="space-y-5"
     >
+      <div class="card p-4">
+        <p class="flex items-center gap-2 text-sm font-medium text-parchment">
+          <Cloud class="h-4 w-4 text-gold" />
+          Nube (Firebase)
+        </p>
+        <p class="mt-1 text-xs leading-5 text-muted">
+          Guarda una copia de la partida en Firebase Realtime Database además de este navegador.
+        </p>
+
+        <p
+          v-if="!cloudConfigured"
+          class="mt-3 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-xs leading-5 text-warning"
+        >
+          La nube no está disponible en este despliegue. Puedes seguir jugando con el guardado
+          local.
+        </p>
+
+        <template v-else-if="!cloudEnabled">
+          <label class="mt-3 block">
+            <span class="field-label">Código de sincronización (opcional)</span>
+            <input
+              v-model="cloudCodeInput"
+              class="field font-mono text-[12.5px]"
+              placeholder="Pega un código existente o déjalo vacío"
+              spellcheck="false"
+              autocomplete="off"
+            >
+            <p class="field-hint">
+              Si lo dejas vacío se generará uno nuevo. Para recuperar una partida en otro
+              dispositivo, pega su código.
+            </p>
+          </label>
+          <button
+            type="button"
+            class="btn-secondary btn-sm mt-3"
+            :disabled="cloudBusy"
+            @click="onEnableCloud"
+          >
+            <LoaderCircle v-if="cloudBusy" class="h-3.5 w-3.5 animate-spin" />
+            <Link2 v-else class="h-3.5 w-3.5" />
+            {{ cloudBusy ? 'Conectando…' : 'Activar nube' }}
+          </button>
+          <p v-if="cloudError" class="mt-2 text-xs leading-5 text-error">{{ cloudError }}</p>
+        </template>
+
+        <template v-else>
+          <div class="mt-3 rounded-xl border border-divider bg-ink-soft px-3 py-2.5">
+            <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">
+              Código de sincronización
+            </p>
+            <div class="mt-1 flex items-center gap-2">
+              <code class="min-w-0 flex-1 break-all font-mono text-[12px] text-gold-bright">
+                {{ formatSyncCode(cloudCode) }}
+              </code>
+              <button
+                type="button"
+                class="icon-btn-sm"
+                aria-label="Copiar código de sincronización"
+                @click="copyCloudCode"
+              >
+                <Copy class="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <p class="mt-1 text-xs" :class="cloudStatus === 'error' ? 'text-error' : 'text-faint'">
+              <template v-if="cloudBusy">Conectando…</template>
+              <template v-else-if="cloudStatus === 'loading'">Cargando desde la nube…</template>
+              <template v-else-if="cloudStatus === 'saving'">Guardando…</template>
+              <template v-else-if="cloudStatus === 'error'">
+                {{ cloudError || 'Error de sincronización.' }}
+              </template>
+              <template v-else-if="cloudLastSaved">Guardado a las {{ cloudSavedAt }}</template>
+              <template v-else>Conectado</template>
+            </p>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="btn-secondary btn-sm"
+              :disabled="cloudBusy || cloudStatus === 'saving'"
+              @click="onSaveCloud"
+            >
+              <CloudUpload class="h-3.5 w-3.5" />
+              Guardar ahora
+            </button>
+            <button
+              type="button"
+              class="btn-secondary btn-sm"
+              :disabled="cloudBusy"
+              @click="restoreFromCloud(true)"
+            >
+              <CloudDownload class="h-3.5 w-3.5" />
+              Restaurar
+            </button>
+            <button
+              type="button"
+              class="btn-ghost btn-sm"
+              :disabled="cloudBusy"
+              @click="onDisableCloud"
+            >
+              <Unlink class="h-3.5 w-3.5" />
+              Desconectar
+            </button>
+          </div>
+          <p
+            v-if="cloudRemoteAt"
+            role="status"
+            class="mt-3 rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-xs leading-5 text-warning"
+          >
+            Hay una copia distinta en la nube. Elige <strong>Restaurar</strong> para cargarla o
+            <strong>Guardar ahora</strong> para subir la de este navegador.
+          </p>
+          <p class="mt-3 text-xs leading-5 text-faint">
+            Cualquiera con este código puede leer y escribir la partida. No lo compartas. La API
+            key no se sincroniza: tendrás que introducirla otra vez en cada dispositivo. Para abrir
+            esta partida en otro dispositivo, desconecta aquí y pega el código con «Activar nube».
+          </p>
+        </template>
+      </div>
+
       <div class="card p-4">
         <p class="text-sm font-medium text-parchment">Copia de seguridad</p>
         <p class="mt-1 text-xs leading-5 text-muted">

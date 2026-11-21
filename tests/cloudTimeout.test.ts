@@ -14,7 +14,7 @@ describe('Tiempo límite de las llamadas a Firebase', () => {
   it('rechaza si Firebase no responde (promesa colgada) y lo marca como fallo de red', async () => {
     const hung = new Promise<never>(() => undefined)
     const result = withTimeout(hung, CLOUD_TIMEOUTS.read, 'La lectura de Firebase')
-    const assertion = expect(result).rejects.toThrow(/network.*La lectura de Firebase.*12 s/)
+    const assertion = expect(result).rejects.toThrow(new RegExp(`network.*La lectura de Firebase.*${CLOUD_TIMEOUTS.read / 1000} s`))
     await vi.advanceTimersByTimeAsync(CLOUD_TIMEOUTS.read + 10)
     await assertion
   })

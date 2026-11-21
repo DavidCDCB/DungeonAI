@@ -69,6 +69,7 @@ const {
   cloudLastSaved,
   cloudRemoteAt,
   cloudBusy,
+  cloudVia,
   previewVoice,
   stopSpeech,
 } = useGame()
@@ -1118,6 +1119,9 @@ async function onInstall() {
               </template>
               <template v-else-if="cloudLastSaved">Guardado a las {{ cloudSavedAt }}</template>
               <template v-else>Conectado</template>
+              <span v-if="cloudVia === 'rest' && cloudStatus !== 'error'" title="El WebSocket de Firebase no conecta en esta red: se usa HTTPS y los cambios de otros dispositivos se consultan cada ~45 s.">
+                · modo compatible (HTTPS)
+              </span>
             </p>
           </div>
           <div class="mt-3 flex flex-wrap gap-2">

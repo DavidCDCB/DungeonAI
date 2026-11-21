@@ -38,6 +38,7 @@ import { withRetries } from '../lib/retry'
 import { isContextError } from '../lib/sse'
 import {
   cloudConfigured,
+  cloudTransport,
   isValidSyncCode,
   newSyncCode,
   normalizeSyncCode,
@@ -127,6 +128,8 @@ const cloudError = ref('')
 const cloudLastSaved = ref<number | null>(null)
 const cloudRemoteAt = ref<number | null>(null)
 const cloudBusy = ref(false)
+/** Camino que usa la nube: el SDK (WebSocket) o, si la red lo bloquea, la API REST por HTTPS. */
+const cloudVia = ref<'sdk' | 'rest'>('sdk')
 
 const settingsOpen = ref(false)
 const settingsTab = ref<SettingsTab>('connection')
@@ -170,6 +173,7 @@ let cloudReady = false
 let cloudTimer: ReturnType<typeof setTimeout> | null = null
 let cloudUnsubscribe: (() => void) | null = null
 let cloudSaving = false
+let cloudWatchVia: 'sdk' | 'rest' | null = null
 let cloudDirty = false
 let cloudApplying = false
 let cloudLocalWriteAt = 0
@@ -405,7 +409,7 @@ function cloudErrorMessage(error: unknown): string {
     return 'Firebase rechazó el acceso. Revisa las reglas de Realtime Database.'
   }
   if (/network|offline|unavailable|failed to get/i.test(text)) {
-    return 'No se pudo conectar con Firebase. Se reintentará al guardar.'
+    return 'No se pudo conectar con Firebase. Revisa tu red, el bloqueador de anuncios o el DNS privado del móvil. Se reintentará al guardar.'
   }
   if (/service database is not available/i.test(text)) {
     return 'Firebase no pudo inicializar Realtime Database. Revisa la configuración del proyecto.'
@@ -414,6 +418,14 @@ function cloudErrorMessage(error: unknown): string {
     return 'Faltan las variables VITE_FIREBASE_* en este despliegue.'
   }
   return 'No se pudo sincronizar con la nube. Revisa la configuración y las reglas.'
+}
+
+/** Si el SDK dejó de funcionar y seguimos por HTTPS, la escucha de cambios pasa a consultas periódicas. */
+function syncCloudTransport() {
+  cloudVia.value = cloudTransport()
+  if (cloudEnabled.value && cloudCode.value && cloudWatchVia !== null && cloudWatchVia !== cloudVia.value) {
+    void subscribeCloud(cloudCode.value)
+  }
 }
 
 function cloudProgress(): ProgressFile {
@@ -461,6 +473,7 @@ async function flushCloudSave(): Promise<boolean> {
     return false
   } finally {
     cloudSaving = false
+    syncCloudTransport()
     if (cloudDirty) {
       cloudDirty = false
       void flushCloudSave()
@@ -471,6 +484,7 @@ async function flushCloudSave(): Promise<boolean> {
 async function subscribeCloud(code: string) {
   cloudUnsubscribe?.()
   cloudUnsubscribe = null
+  cloudWatchVia = cloudTransport()
   try {
     cloudUnsubscribe = await watchCloudSnapshot(code, {
       onSnapshot: (snapshot) => {
@@ -562,6 +576,7 @@ async function initCloud() {
   } finally {
     // «Conectando…» solo dura mientras se lee; el guardado inicial y la suscripción tienen su propio estado.
     cloudBusy.value = false
+    cloudVia.value = cloudTransport()
   }
   if (!connected) return
   if (needsFirstSave) await flushCloudSave()
@@ -674,6 +689,7 @@ async function disableCloud(): Promise<void> {
   cloudUnsubscribe?.()
   cloudUnsubscribe = null
   cloudEnabled.value = false
+  cloudWatchVia = null
   cloudStatus.value = 'disabled'
   cloudLastSaved.value = null
   cloudRemoteAt.value = null
@@ -1665,6 +1681,7 @@ export function useGame() {
     cloudLastSaved,
     cloudRemoteAt,
     cloudBusy,
+    cloudVia,
     settingsOpen,
     settingsTab,
     diceOpen,

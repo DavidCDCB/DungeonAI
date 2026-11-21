@@ -39,7 +39,7 @@ Tú llevas al personaje y decides el rumbo; la app se encarga de la narración, 
 |---|---|
 | 📖 **Narración en vivo** | El texto del DM aparece mientras se escribe, con un indicador de fase, tiempo y tokens de razonamiento. Puedes detener el turno cuando quieras. |
 | 🎲 **Dados de verdad** | El DM pide la tirada y la app crea el botón: `1d20 + 5`, ventaja, desventaja, d4–d100, varios grupos y descarte del menor. Críticos y pifias resaltados. |
-| 🧠 **Memoria persistente** | La escena, el combate, la hoja, el dinero, las condiciones, las misiones y los PNJ se guardan en un estado `[ESTADO]` que se actualiza cada turno. |
+| 🧠 **Memoria persistente** | La escena, el combate, la hoja, el dinero, las condiciones, las misiones y los PNJ se guardan como estado y un **Cronista de estado** lo actualiza tras cada narración. |
 | 🕹️ **Decisiones con un toque** | Cinco opciones numeradas (atajos `1`–`5`), una opción 🃏 de comodín y la posibilidad de editar cualquier opción antes de enviarla. |
 | 🗣️ **Lectura y voz** | Voz del navegador con velocidad y lectura automática, tipografía de libro y letra capital en cada escena. Sin servidores TTS ni claves extra. |
 | 📱 **App instalable** | PWA que se instala desde el navegador y abre sin conexión. En el móvil, el compositor se adapta al teclado y la lectura está pensada para pantallas estrechas. |
@@ -98,7 +98,7 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 
 ### Partida
 
-- **Streaming:** el texto del DM aparece mientras se escribe. Mientras tanto se ocultan el bloque `[ESTADO]` y las opciones a medio escribir. El indicador muestra la fase (consultando notas, pensando, escribiendo), el tiempo y los tokens de razonamiento. **Detener** cancela el turno.
+- **Streaming:** el texto del DM aparece mientras se escribe. Mientras tanto se oculta el cuaderno secreto `[TRAMA]` a medio escribir. El indicador muestra la fase (consultando notas, pensando, escribiendo), el tiempo y los tokens de razonamiento. Mientras el DM razona, el fondo de la tarjeta enseña el final de su razonamiento **muy difuminado** (ilegible, decorativo y sin selección): da a entender que está pensando sin revelar qué piensa. **Detener** cancela el turno.
 - **Orbe de razonamiento:** mientras el modelo piensa, el orbe reacciona a la velocidad *actual* de los tokens de razonamiento (ventana de unos 2,5 s, no la media): gira más rápido, brilla más y cambia de color al acelerar, y se frena y se apaga si el modelo se detiene. El rango va de **10 tok/s** (giro suave y brillo bajo) a **200 tok/s** (máximo), en escala logarítmica; se ajusta con `PACE_MIN` y `PACE_MAX` en `src/lib/pace.ts`. Junto al contador se ven un medidor de 5 segmentos, los tok/s y el tempo (*calentando · en pausa · despacio · constante · ágil · a toda marcha*). Con «reducir movimiento» del sistema el orbe no gira y solo cambia de brillo. La lógica está en `src/lib/pace.ts` y el orbe en `ReasoningOrb.vue`.
 - **Opciones** como botones numerados (atajos `1`–`5`). La opción 🃏 se destaca como *comodín* y cualquier opción se puede editar antes de enviarla.
 - **Regenerar** la última respuesta del DM; si falla, se restaura la anterior.
@@ -131,7 +131,7 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 
 - Tamaño de texto (pequeño/normal/grande) y letra de narración (Literata «libro» o Inter «moderna»). Letra capital en cada escena.
 - Voz del navegador con selector, **Probar**, velocidad y lectura automática. El texto se lee por fragmentos para evitar el corte de ~15 s de Chrome con voces largas.
-- **Resaltado palabra a palabra** mientras suena (CSS Custom Highlight API: Chrome/Edge 105+, Safari 17.2+, Firefox 140+; en otros navegadores se lee sin resaltar). Si la voz no emite eventos de palabra, la posición se estima por tiempo. La pantalla sigue la lectura solo si la palabra estaba a la vista.
+- **Resaltado palabra a palabra** mientras suena (CSS Custom Highlight API: Chrome/Edge 105+, Safari 17.2+, Firefox 140+; en otros navegadores se lee sin resaltar). Si la voz no emite eventos de palabra, la posición se estima por tiempo. La pantalla sigue la lectura solo si la palabra estaba a la vista y no la mueve si te desplazaste a mano.
 - **Pausar** corta la voz y **Reanudar** la retoma desde la última palabra: `speechSynthesis.pause()/resume()` no es fiable en Android ni con voces online.
 
 ### Conexión y contexto
@@ -244,14 +244,14 @@ src/
 │  ├─ firebase.ts             configuración y carga diferida del SDK de Firebase
 │  ├─ sse.ts                  parser SSE y lectura de errores de contexto
 │  ├─ dice.ts                 tiradas, modos, sugerencias y lectura de resultados
-│  ├─ gameState.ts            memoria [ESTADO], secciones e instantáneas
+│  ├─ gameState.ts            memoria: secciones, fusión parcial, [TRAMA] e instantáneas
 │  ├─ messages.ts · options.ts · markdown.ts · ttsText.ts · speechHighlight.ts
 │  ├─ pace.ts                 velocidad actual del razonamiento (ventana deslizante) y tempo
 │  ├─ lore.ts                 contexto del mundo: bloque del prompt, plantilla, generación
 │  ├─ prompt.ts · commands.ts · providers.ts · contextBudget.ts
 │  ├─ storage.ts              persistencia en IndexedDB: caché, lotes, migración desde localStorage
 │  └─ transfer.ts · format.ts
-├─ prompts/dungeon_master.md
+├─ prompts/dungeon_master.md · dungeon_master_estado.md · dungeon_master_opciones.md
 └─ types.ts
 tests/                         Vitest: lógica, parser y contrato con el prompt
 database.rules.json · firebase.json · .env.example · vercel.json · pwa-assets.config.ts · .vercelignore
@@ -261,9 +261,15 @@ database.rules.json · firebase.json · .env.example · vercel.json · pwa-asset
 
 `src/prompts/dungeon_master.md` es el prompt original y define el contrato entre el DM y la app. Desde *Ajustes → Prompt* se puede reemplazar por uno personalizado; la app conserva la memoria y el recordatorio de cierre:
 
-- Orden de cada respuesta: narración → `[ESTADO]…[/ESTADO]` → cierre. Una petición de tirada (`[TIRADA]` con notación completa) va al final de la narración; si no hay tirada, van 5 opciones en primera persona y una con 🃏.
-- Cada sección de `[ESTADO]` reemplaza entera a la guardada. `Combate:` se omite al terminar el combate, y `Trama (solo DM)` es secreta.
-- Documenta el formato exacto de los mensajes del lanzador de dados y avisa al modelo de que su historial le llega sin `[ESTADO]` ni opciones (para que no imite el recorte).
+- Orden de cada respuesta: narración → petición `[TIRADA]` (si hace falta, con notación completa, al final de la narración) → bloque secreto `[TRAMA]…[/TRAMA]` solo cuando cambie su cuaderno. El DM **no escribe `[ESTADO]` ni opciones**: la memoria y las opciones las generan otros dos agentes (ver abajo).
+- La memoria tiene las secciones Escena, Combate, Hoja de personaje, Inventario, Dinero, Condiciones y efectos, Misiones, PNJs y notas, y `Trama (solo DM)` (secreta, solo la escribe el DM con `[TRAMA]`). Cada sección que se escribe reemplaza entera a la guardada.
+- Documenta el formato exacto de los mensajes del lanzador de dados y avisa al modelo de que su historial le llega sin `[TRAMA]`, opciones ni `[TIRADA]` (para que no imite el recorte).
+- **Tres agentes por turno.** La narración se muestra (y se lee en voz alta si la lectura automática está activa) en cuanto termina, y lo demás ocurre en segundo plano:
+  1. **DM** (`dungeon_master.md`): narración y, si hace falta, `[TIRADA]`/`[TRAMA]`.
+  2. **Cronista de estado** (`dungeon_master_estado.md`): lee la narración y la acción del jugador y devuelve solo las secciones de la memoria que cambiaron. Las aplica con una fusión parcial: lo que omite se conserva, `Combate: ninguno` cierra el combate y nunca toca la «Trama». Corre en **todos** los turnos, también con tirada pendiente. El siguiente turno del DM **espera** a que termine para recibir la memoria al día; si falla se **repite solo** (hasta 3 intentos, con esperas de 2 s y 5 s; solo ante fallos pasajeros: red, tiempo agotado, 429, 5xx o respuesta inválida, no ante una key o URL erróneas) y, si siguen fallando, avisa con «Reintentar» y el siguiente Cronista recibe también el turno pendiente.
+  3. **Arquitecto de Opciones** (`dungeon_master_opciones.md`): con el canon, la memoria ya actualizada y el historial propone 5 opciones ancladas en la escena, posibles con la hoja actual, distintas entre sí y sin vacíos, con exactamente un comodín 🃏 y el mismo esfuerzo de razonamiento que la narración. No corre con tirada pendiente.
+
+  Mientras se generan se ve «Actualizando la memoria…» y luego «Preparando tus opciones…». Durante los reintentos automáticos se indica el intento («reintentando 2/3»). Si el jugador actúa antes, las opciones se descartan; si fallan los 3 intentos hay un botón para reintentar. Los dos agentes usan **el mismo esfuerzo de razonamiento que el DM** y piden la respuesta **sin streaming** (nadie la lee mientras llega); los prompts del Cronista y de las opciones no se editan desde Ajustes. Con un prompt personalizado antiguo que aún haga escribir `[ESTADO]` al DM, la app lo respeta y se salta al Cronista.
 - Se interpolan `{{tema}}`, `{{mundo}}`, `{{personaje}}`/`{{nombre}}`, `{{clase}}` y `{{raza}}`. La app añade el contexto del mundo (si lo hay), la memoria vigente y un recordatorio de cierre (`src/lib/prompt.ts`).
 
 `tests/prompt.test.ts` comprueba que el prompt y el parser encajan: la plantilla `[ESTADO]` produce todas las secciones, los ejemplos de dados coinciden con lo que genera el lanzador, los ejemplos de petición producen botones y los comandos del menú están documentados.

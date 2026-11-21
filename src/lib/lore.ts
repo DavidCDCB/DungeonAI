@@ -86,6 +86,7 @@ Reglas:
 - Escribe en español, con datos concretos y fieles a la obra original: nombres propios, lugares, facciones, personajes, cronología, reglas del mundo y tono.
 - Usa exactamente estos encabezados Markdown de nivel 2, en este orden, con listas breves bajo cada uno: ${LORE_HEADINGS.map((item) => `«${item}»`).join(', ')}.
 - Sé denso y útil, no florido: entre 700 y 1400 palabras en total.
+- Redacta en español claro, correcto y coherente: frases completas y breves, sin ambigüedades, con la misma grafía para cada nombre propio y sin que ninguna frase pierda su sentido por abreviarla.
 - Distingue el canon de las suposiciones. No inventes datos de una obra real; si dudas de un dato, omítelo o indícalo con «(sin confirmar)».
 - Si no conoces el mundo o la franquicia pedida, responde únicamente ${LORE_UNKNOWN_MARK} y una línea con lo que necesitas saber.
 - No añadas introducciones, despedidas ni bloques de código: solo el dossier.`
@@ -107,7 +108,8 @@ Reglas:
 - Reparte la información bajo estos encabezados Markdown de nivel 2, en este orden, con listas breves: ${LORE_HEADINGS.map((item) => `«${item}»`).join(', ')}. Omite los encabezados que no tengan datos en el texto.
 - Elimina el ruido de la web: menús, anuncios, «editar», referencias numéricas como [1], avisos de cookies, enlaces de navegación y repeticiones.
 - Escribe en español: traduce lo que esté en otro idioma, pero deja sin traducir los nombres propios y los términos propios del mundo.
-- Sé denso y neutro, con frases cortas. Si el texto es muy largo, condensa lo accesorio y conserva lo esencial.
+- Sé denso y neutro, con frases cortas, completas y claras. Si el texto es muy largo, condensa lo accesorio y conserva lo esencial, sin resumir hasta cambiar el significado de un dato.
+- Al traducir, conserva el sentido exacto, usa la misma grafía para cada nombre propio y corrige la ortografía y la puntuación.
 - No añadas introducciones, despedidas ni bloques de código: solo el dossier.`
 
 /** Mensaje del jugador para reescribir su texto con la plantilla. */

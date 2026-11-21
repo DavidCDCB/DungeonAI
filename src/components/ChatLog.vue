@@ -6,6 +6,7 @@ import DmMessage from './DmMessage.vue'
 import PlayerMessage from './PlayerMessage.vue'
 import OptionList from './OptionList.vue'
 import EmptyState from './EmptyState.vue'
+import { AGENT_ATTEMPTS } from '../lib/retry'
 
 const PAGE = 60
 
@@ -14,6 +15,12 @@ const {
   messages,
   visibleOptions,
   loading,
+  optionsPending,
+  memoryPending,
+  agentAttempt,
+  optionsMissing,
+  generateOptions,
+  settings,
   pendingId,
   scrollTarget,
   scrollNonce,
@@ -24,6 +31,24 @@ const container = ref<HTMLElement | null>(null)
 const visibleCount = ref(PAGE)
 const follow = ref(false)
 const showJump = ref(false)
+
+/** La última respuesta lleva opciones: se están generando o se generarán tras actualizar la memoria. */
+const optionsComing = computed(() => {
+  if (optionsPending.value) return true
+  const last = messages.value[messages.value.length - 1]
+  return Boolean(
+    memoryPending.value &&
+      last &&
+      last.role === 'assistant' &&
+      !last.diceRequest &&
+      !last.options.length &&
+      last.display.trim(),
+  )
+})
+const pendingLabel = computed(() => {
+  const base = memoryPending.value ? 'Actualizando la memoria…' : 'Preparando tus opciones…'
+  return agentAttempt.value > 1 ? `${base} reintentando (${agentAttempt.value}/${AGENT_ATTEMPTS})` : base
+})
 
 const hiddenCount = computed(() => Math.max(0, displayMessages.value.length - visibleCount.value))
 const rendered = computed(() => displayMessages.value.slice(hiddenCount.value))
@@ -202,6 +227,30 @@ defineExpose({ container })
               <PlayerMessage v-else :message="message" />
             </template>
             <OptionList v-if="visibleOptions.length" :options="visibleOptions" />
+            <section
+              v-else-if="optionsComing"
+              class="animate-fade-up"
+              role="status"
+              aria-live="polite"
+              :aria-label="pendingLabel"
+            >
+              <h3 class="mb-3 flex items-baseline gap-x-2">
+                <span class="font-display text-xs font-semibold tracking-[0.16em] text-gold uppercase">
+                  ¿Qué hace {{ settings.character }}?
+                </span>
+                <span class="shimmer-text text-xs">{{ pendingLabel }}</span>
+              </h3>
+              <div class="grid gap-2" aria-hidden="true">
+                <div v-for="n in 5" :key="n" class="h-[3.25rem] animate-pulse rounded-xl border border-divider bg-surface/40" :style="{ animationDelay: `${n * 120}ms` }" />
+              </div>
+            </section>
+            <p v-else-if="memoryPending" class="shimmer-text animate-fade-up text-xs" role="status" aria-live="polite">
+              {{ pendingLabel }}
+            </p>
+            <section v-else-if="optionsMissing" class="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-divider px-4 py-3 text-sm text-muted">
+              <span>Este turno no tiene opciones.</span>
+              <button type="button" class="btn-sm" @click="generateOptions">Generar opciones</button>
+            </section>
           </div>
         </template>
       </div>

@@ -5,14 +5,18 @@ import { formatElapsed, formatNumber, formatRate } from '../lib/format'
 import { PACE_LABELS, paceBars, paceIntensity, paceTier } from '../lib/pace'
 import ReasoningOrb from './ReasoningOrb.vue'
 
-const { phase, turnStartedAt, now, liveStats, settings, cancelTurn } = useGame()
+const { phase, turnStartedAt, now, liveStats, settings, cancelTurn, reasoningTail, agentAttempt } = useGame()
 
 const BARS = 5
 
 const elapsed = computed(() => formatElapsed(now.value - turnStartedAt.value))
 const label = computed(() => {
+  if (phase.value === 'memory') {
+    return agentAttempt.value > 1
+      ? `Actualizando la memoria de la partida (intento ${agentAttempt.value})`
+      : 'Actualizando la memoria de la partida'
+  }
   if (phase.value === 'thinking') return 'El Dungeon Master medita su respuesta'
-  if (phase.value === 'repairing') return 'Preparando tus opciones'
   if (phase.value === 'writing') return 'El Dungeon Master escribe'
   return 'El Dungeon Master consulta sus notas'
 })
@@ -25,10 +29,17 @@ const litBars = computed(() => paceBars(speed.value, BARS))
 
 /** Intensidad del orbe: sigue la velocidad real del razonamiento. */
 const intensity = computed(() => {
-  if (phase.value === 'writing' || phase.value === 'repairing') return 0.3
+  if (phase.value === 'writing') return 0.3
   if (!thinking.value) return 0.06
   return speed.value === null ? 0.15 : Math.max(0.05, paceIntensity(speed.value))
 })
+
+/**
+ * Fondo de la tarjeta: el final del razonamiento, tan difuminado que no se puede leer. Solo da
+ * a entender que el DM está pensando; es decorativo (aria-hidden, sin selección).
+ */
+const veilText = computed(() => reasoningTail.value.replace(/\s+/g, ' ').slice(-520))
+const veilOpacity = computed(() => (0.38 + 0.4 * intensity.value).toFixed(2))
 
 const speedTitle = computed(() => {
   const average = liveStats.value.reasoningRate
@@ -40,8 +51,17 @@ const speedTitle = computed(() => {
 
 <template>
   <div class="flex items-center gap-4 py-1" role="status">
-    <ReasoningOrb :intensity="intensity" />
-    <div class="min-w-0 flex-1">
+    <div
+      v-if="veilText"
+      class="reasoning-veil pointer-events-none absolute inset-0 select-none"
+      aria-hidden="true"
+      translate="no"
+      data-testid="reasoning-veil"
+    >
+      <p :style="{ opacity: veilOpacity }">{{ veilText }}</p>
+    </div>
+    <ReasoningOrb :intensity="intensity" class="relative" />
+    <div class="relative min-w-0 flex-1">
       <p class="shimmer-text text-[15px] font-medium">{{ label }}…</p>
       <div class="mt-1 space-y-1.5 text-xs text-faint tabular-nums" aria-live="off">
         <p class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -80,6 +100,38 @@ const speedTitle = computed(() => {
       </div>
     </div>
     <!-- En pantallas estrechas se detiene con el botón del compositor. -->
-    <button type="button" class="btn-ghost btn-sm max-sm:hidden" @click="cancelTurn">Detener</button>
+    <button type="button" class="btn-ghost btn-sm relative max-sm:hidden" @click="cancelTurn">Detener</button>
   </div>
 </template>
+
+<style scoped>
+/* Texto del razonamiento como fondo: anclado abajo, difuminado y con las líneas viejas desvaneciéndose. */
+.reasoning-veil {
+  overflow: hidden;
+  border-radius: inherit;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 38%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 38%);
+}
+
+.reasoning-veil > p {
+  position: absolute;
+  inset: auto 0 0 0;
+  margin: 0;
+  padding: 0 1rem 0.7rem;
+  font-family: var(--reading-font);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-gold-bright);
+  filter: blur(5px);
+  transition: opacity 0.6s ease;
+  overflow-wrap: anywhere;
+}
+
+/* Un velo sólido a la izquierda mantiene limpio el orbe y los textos de estado. */
+.reasoning-veil::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgb(22 19 27 / 0.9) 0%, transparent 36%);
+}
+</style>

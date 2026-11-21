@@ -26,7 +26,6 @@ const dropcap = computed(
 )
 const speaking = computed(() => game.speakingId.value === props.message.id)
 const paused = computed(() => speaking.value && game.ttsPaused.value)
-const repairing = computed(() => props.streaming && game.phase.value === 'repairing')
 const copied = ref(false)
 const body = ref<HTMLElement | null>(null)
 const stats = computed(() => game.liveStats.value)
@@ -36,6 +35,17 @@ let shown: DomWord[] = []
 let mapping: number[] = []
 let mappedFor: readonly string[] | null = null
 let wasVisible = true
+/** Posición del scroll en la palabra anterior y si el movimiento en curso es nuestro (seguir la lectura). */
+let lastScrollTop = -1
+let followingUntil = 0
+
+function scrollParent(element: HTMLElement | null): HTMLElement | null {
+  for (let node = element; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY
+    if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight) return node
+  }
+  return null
+}
 
 function prepareHighlight(words: readonly string[]) {
   if (!body.value) return false
@@ -58,12 +68,21 @@ function showWord(spokenIndex: number) {
   if (!range) return
   const box = range.getBoundingClientRect()
   const visible = box.bottom > 72 && box.top < window.innerHeight - 140
+  // Si el lector movió la pantalla desde la palabra anterior (y no fue nuestro seguimiento), manda él.
+  const scroller = scrollParent(word.node.parentElement)
+  const userMoved =
+    scroller !== null &&
+    lastScrollTop >= 0 &&
+    Math.abs(scroller.scrollTop - lastScrollTop) > 2 &&
+    Date.now() > followingUntil
   // Sigue la lectura solo si el lector la estaba viendo: no tira de la pantalla si se fue a otro sitio.
-  if (!visible && wasVisible) {
+  if (!visible && wasVisible && !userMoved) {
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    followingUntil = Date.now() + 900 // lo que dure el desplazamiento suave
     word.node.parentElement?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' })
   }
   wasVisible = visible
+  lastScrollTop = scroller ? scroller.scrollTop : -1
 }
 
 watch(
@@ -72,6 +91,7 @@ watch(
     if (!isSpeaking) {
       mappedFor = null
       wasVisible = true
+      lastScrollTop = -1
       return
     }
     // El texto mostrado cambió (p. ej. se regeneró): hay que volver a alinear.
@@ -119,7 +139,7 @@ async function copy() {
         Tirada pendiente
       </span>
       <span
-        v-if="streaming && message.display && !repairing"
+        v-if="streaming && message.display"
         class="ml-auto flex items-center gap-2 text-[11px] whitespace-nowrap text-faint tabular-nums"
         title="Estimación en vivo"
       >
@@ -168,17 +188,16 @@ async function copy() {
 
     <div
       class="rounded-2xl border bg-surface/75 px-4 py-4 shadow-[inset_0_1px_0_rgb(255_255_255/0.03),0_24px_48px_-36px_rgb(0_0_0/0.9)] transition-colors sm:px-7 sm:py-6"
-      :class="speaking ? 'border-gold-dim/70' : 'border-divider'"
+      :class="[speaking ? 'border-gold-dim/70' : 'border-divider', streaming && !message.display ? 'relative overflow-hidden' : '']"
     >
       <ThinkingIndicator v-if="streaming && !message.display" />
       <template v-else>
         <div
           ref="body"
           class="dm-markdown"
-          :class="{ 'has-dropcap': dropcap, 'is-streaming': streaming && !repairing }"
+          :class="{ 'has-dropcap': dropcap, 'is-streaming': streaming }"
           v-html="html"
         />
-        <p v-if="repairing" class="shimmer-text mt-4 text-sm">Preparando tus opciones…</p>
       </template>
     </div>
   </article>

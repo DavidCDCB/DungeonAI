@@ -1,6 +1,6 @@
 import type { ChatMessage, Role } from '../types'
 import { parseOptions, plain } from './options'
-import { extractState } from './gameState'
+import { extractPlot, extractState } from './gameState'
 
 const marcadorTirada = /\[\s*TIRADA\s*]/i
 const peticionTirada = new RegExp(
@@ -35,17 +35,20 @@ export function createMessage(
       : { display: content, options: [] as string[] }
   const memoria =
     role === 'assistant' ? extractState(parsed.display) : { display: parsed.display, state: '' }
-  const diceRequest = role === 'assistant' && pideTirada(memoria.display)
+  // El DM ya no escribe [ESTADO]; solo puede anotar su cuaderno secreto con [TRAMA]…[/TRAMA].
+  const trama = role === 'assistant' ? extractPlot(memoria.display) : { display: memoria.display, plot: '' }
+  const diceRequest = role === 'assistant' && pideTirada(trama.display)
   const display = diceRequest
-    ? memoria.display.replace(marcadorTirada, '').replace(/\n{3,}/g, '\n\n').trim()
-    : memoria.display
+    ? trama.display.replace(marcadorTirada, '').replace(/\n{3,}/g, '\n\n').trim()
+    : trama.display
+  const state = [memoria.state, trama.plot ? `Trama (solo DM): ${trama.plot}` : ''].filter(Boolean).join('\n')
   return {
     id,
     role,
     content,
     display,
     options: diceRequest ? [] : parsed.options,
-    state: memoria.state,
+    state,
     diceRequest,
   }
 }
@@ -61,9 +64,10 @@ export function optionLines(options: string[]): string {
     .join('\n')
 }
 
-export function prepareRepairContent(original: ChatMessage, repair: ChatMessage): ChatMessage | null {
-  if (repair.diceRequest) return null
-  const options = repair.options
+/** Añade a la respuesta del DM las opciones generadas en la segunda llamada. */
+export function attachOptions(original: ChatMessage, generated: ChatMessage): ChatMessage | null {
+  if (generated.diceRequest) return null
+  const options = generated.options
   if (!options.length) return null
   return createMessage(
     'assistant',
@@ -80,7 +84,7 @@ const trailingHeading = /\n[ \t]*\*{0,2}(?:acciones|opciones|sugerencias)[^\n]*\
  */
 export function streamingPreview(text: string): string {
   let cut = text.length
-  const estado = /\[\s*\/?\s*ESTADO/i.exec(text)
+  const estado = /\[\s*\/?\s*(?:ESTADO|TRAMA)/i.exec(text)
   if (estado) cut = Math.min(cut, estado.index)
   const option = /^[ \t]*\{\s*\d/m.exec(text)
   if (option) cut = Math.min(cut, option.index)

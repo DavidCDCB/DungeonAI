@@ -87,7 +87,7 @@ export interface DiceRoll extends DiceRequest {
   natural: number | null
 }
 
-export type TurnPhase = 'idle' | 'waiting' | 'thinking' | 'writing' | 'repairing'
+export type TurnPhase = 'idle' | 'memory' | 'waiting' | 'thinking' | 'writing'
 
 export const DEFAULT_SETTINGS: Settings = {
   apiKey: '',

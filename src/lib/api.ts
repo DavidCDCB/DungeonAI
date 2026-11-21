@@ -35,15 +35,24 @@ export interface ChatResult {
   /** Si el modelo informó una ventana menor, la nueva ventana aplicada. */
   contextWindow?: number
   streamed: boolean
+  /** Esfuerzo de razonamiento con el que se obtuvo la respuesta (tras los reintentos); null = sin él. */
+  effort: Reasoning | null
 }
 
 export interface StreamProgress {
   content: string
   reasoningChars: number
+  /** Final del razonamiento recibido (solo para el fondo difuminado de la espera; nunca se muestra legible). */
+  reasoningTail?: string
 }
+
+/** Caracteres del razonamiento que se conservan para el fondo difuminado. */
+const REASONING_TAIL = 800
 
 export interface ChatOptions {
   stream?: boolean
+  /** Esfuerzo inicial; si se omite se usa el de los ajustes. `null` = sin razonamiento. */
+  effort?: Reasoning | null
   signal?: AbortSignal
   onProgress?: (progress: StreamProgress) => void
 }
@@ -127,7 +136,7 @@ async function chatOnce(
   messages: ChatMessage[],
   effort: Reasoning | null,
   options: AttemptOptions = {},
-): Promise<Omit<ChatResult, 'contextWindow'>> {
+): Promise<Omit<ChatResult, 'contextWindow' | 'effort'>> {
   if (requiresApiKey(settings.baseUrl) && !settings.apiKey.trim()) {
     throw new ApiError('Falta la API key del proveedor.')
   }
@@ -243,6 +252,7 @@ async function readEventStream(
   const parser = new SseParser()
   let content = ''
   let reasoningChars = 0
+  let reasoningTail = ''
   let usage: unknown = null
   let done = false
 
@@ -266,7 +276,8 @@ async function readEventStream(
       if (chunk.content || chunk.reasoning) {
         content += chunk.content
         reasoningChars += chunk.reasoning.length
-        options.onProgress?.({ content, reasoningChars })
+        if (chunk.reasoning) reasoningTail = (reasoningTail + chunk.reasoning).slice(-REASONING_TAIL)
+        options.onProgress?.({ content, reasoningChars, reasoningTail })
       }
     }
   }
@@ -338,7 +349,7 @@ export async function chatWithFallback(
   messages: ChatMessage[],
   options: ChatOptions = {},
 ): Promise<ChatResult> {
-  let effort: Reasoning | null = settings.reasoning
+  let effort: Reasoning | null = options.effort !== undefined ? options.effort : settings.reasoning
   let stream = Boolean(options.stream)
   let streamOptions = true
   let contextWindow = settings.contextWindow
@@ -354,7 +365,7 @@ export async function chatWithFallback(
         effort,
         { ...options, stream, streamOptions },
       )
-      return { ...result, contextWindow: adjustedWindow }
+      return { ...result, effort, contextWindow: adjustedWindow }
     } catch (error) {
       if (!(error instanceof ApiError)) throw error
       const text = error.message
@@ -391,20 +402,41 @@ export async function chatWithFallback(
   throw new ApiError('No se pudo obtener respuesta del modelo.')
 }
 
-/** Pide solo las 5 opciones que faltan, con razonamiento bajo y sin streaming. */
-export async function requestMissingOptions(
+/**
+ * Segunda llamada de cada turno: genera las 5 opciones de acción a partir de la narración ya
+ * escrita. Usa el mismo esfuerzo de razonamiento que la primera y no hace streaming.
+ */
+export async function requestOptions(
   settings: Settings,
   systemPrompt: string,
   history: ChatMessage[],
+  effort: Reasoning | null,
   signal?: AbortSignal,
-): Promise<string | null> {
-  const result = await chatOnce(
-    { ...settings, reasoning: 'low' },
-    systemPrompt,
-    history,
-    'low',
-    { signal },
-  )
+): Promise<string> {
+  const result = await chatWithFallback(settings, systemPrompt, history, {
+    stream: false,
+    effort,
+    signal,
+  })
+  return result.content
+}
+
+/**
+ * Llamada del Cronista de estado: devuelve el [ESTADO] con las secciones que cambiaron.
+ * Usa el mismo esfuerzo que la narración y no hace streaming (nadie lee su texto mientras llega).
+ */
+export async function requestMemoryUpdate(
+  settings: Settings,
+  systemPrompt: string,
+  history: ChatMessage[],
+  effort: Reasoning | null,
+  signal?: AbortSignal,
+): Promise<string> {
+  const result = await chatWithFallback(settings, systemPrompt, history, {
+    stream: false,
+    effort,
+    signal,
+  })
   return result.content
 }
 

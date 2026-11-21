@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS } from '../src/types'
-import { buildSystemPrompt, promptBase } from '../src/lib/prompt'
+import { buildSystemPrompt, promptBase, statePromptBase } from '../src/lib/prompt'
 import { MEMORY_SECTIONS, mergeState, sections } from '../src/lib/gameState'
 import { createMessage } from '../src/lib/messages'
 import { messageFor, rollDice, suggestDice } from '../src/lib/dice'
@@ -12,8 +12,8 @@ function sequence(sides: number, values: number[]) {
   return () => (values[index++ % values.length] - 1) / sides
 }
 
-function codeBlockWith(marker: string): string {
-  const blocks = [...promptBase.matchAll(/```\n([\s\S]*?)```/g)].map((match) => match[1])
+function codeBlockWith(marker: string, source = promptBase): string {
+  const blocks = [...source.matchAll(/```\n([\s\S]*?)```/g)].map((match) => match[1])
   const block = blocks.find((item) => item.includes(marker))
   if (!block) throw new Error(`No hay bloque de código con ${marker}`)
   return block
@@ -48,9 +48,13 @@ describe('Contrato entre el prompt del DM y la app', () => {
   })
 
   it('la plantilla de [ESTADO] se guarda con todas sus secciones', () => {
-    const template = codeBlockWith('[ESTADO]')
+    // La plantilla vive en el prompt del Cronista; la «Trama» la escribe el DM con [TRAMA].
+    const template = codeBlockWith('[ESTADO]', statePromptBase)
     const body = template.replace(/\[\/?ESTADO\]/g, '')
-    expect([...sections(body).keys()]).toEqual(MEMORY_SECTIONS.map((section) => section.title))
+    expect([...sections(body).keys()]).toEqual(
+      MEMORY_SECTIONS.filter((section) => !section.secret).map((section) => section.title),
+    )
+    expect(codeBlockWith('[TRAMA]')).toContain('[/TRAMA]')
   })
 
   it('documenta el formato real del lanzador de dados', () => {

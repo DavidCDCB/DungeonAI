@@ -45,7 +45,7 @@ Tú llevas al personaje y decides el rumbo; la app se encarga de la narración, 
 | 📱 **App instalable** | PWA que se instala desde el navegador y abre sin conexión. En el móvil, el compositor se adapta al teclado y la lectura está pensada para pantallas estrechas. |
 | 🔌 **Tu modelo, tus reglas** | Proveedores OpenAI-compatibles, ventana de contexto de 32k a 1M, detección automática y reintentos según lo que soporte el modelo. |
 | 🪶 **Prompt a tu medida** | Reemplaza el prompt del Dungeon Master desde *Ajustes → Prompt*, con marcadores de campaña y opción de volver al original. Viaja en la exportación. |
-| ☁️ **Nube opcional** | Copia la partida en Firebase Realtime Database con un código de sincronización para recuperarla en otro dispositivo. La API key nunca se sube. |
+| ☁️ **Nube opcional** | Copia la partida en Firebase Realtime Database (por HTTPS, sin SDK) con un código de sincronización para recuperarla en otro dispositivo. La API key nunca se sube. |
 | 🔒 **Privado por diseño** | La clave vive solo en tu navegador y el servidor no la almacena. La nube es opcional y nunca incluye la API key; puedes exportar la partida en JSON cuando quieras. |
 
 ## Capturas
@@ -154,12 +154,10 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 
 ### Nube opcional (Firebase)
 
-- *Ajustes → Datos → Nube* activa una copia remota en **Firebase Realtime Database**. La app genera un **código de sincronización** de 32 caracteres; guárdalo.
+- *Ajustes → Datos → Nube* activa una copia remota en **Firebase Realtime Database**, a la que la app accede con su **API REST por HTTPS** (sin el SDK de Firebase: sin WebSockets, sin peso extra en el bundle y válido en cualquier red que deje salir HTTPS). La app genera un **código de sincronización** de 32 caracteres; guárdalo.
 - Para recuperar la partida en otro dispositivo, abre la app, ve a *Ajustes → Datos*, pega el código y pulsa **Activar nube**. Si este navegador ya tiene partida, se pregunta antes de reemplazarla.
-- La copia se guarda tras cada cambio; la nube es un espejo, no un historial. Si otro dispositivo cambia la partida, aparece un aviso para cargarla. Si dos dispositivos editan a la vez, gana el último guardado. Al abrir con datos en ambos lados no se sobrescribe nada: la app avisa y tú eliges entre **Restaurar** y **Guardar ahora**.
-- **Sin conexión o con red lenta:** cada llamada a Firebase tiene un tiempo límite (12–15 s). Si no responde, la nube pasa a «No se pudo conectar con Firebase» y los botones quedan libres en lugar de quedarse en «Conectando…». Se reintenta sola al recuperar la red o al volver a la pestaña, y con «Guardar ahora».
-- **Redes que bloquean el WebSocket (algunos Wi‑Fi, datos móviles, DNS privado o bloqueadores de anuncios):** el SDK de Firebase usa WebSocket y, si no conecta en ~8–10 s, la app pasa sola al **modo compatible**: guarda y lee con la API REST de Realtime Database por **HTTPS** y consulta cada ~45 s si otro dispositivo guardó algo más nuevo (se indica «· modo compatible (HTTPS)» junto al estado). Si tampoco llega por HTTPS, muestra «No se pudo conectar con Firebase» y deja libres los botones.
-- **Sin conexión o con red lenta:** cada llamada tiene un tiempo límite, así que la nube nunca se queda en «Conectando…». Se reintenta sola al recuperar la red o al volver a la pestaña, y con «Guardar ahora».
+- La copia se guarda tras cada cambio; la nube es un espejo, no un historial. Cada ~45 s (con la pestaña visible) la app comprueba si otro dispositivo guardó algo más nuevo y, si es así, avisa para cargarlo. Si dos dispositivos editan a la vez, gana el último guardado. Al abrir con datos en ambos lados no se sobrescribe nada: la app avisa y tú eliges entre **Restaurar** y **Guardar ahora**.
+- **Sin conexión o con red lenta:** cada petición tiene un tiempo límite de 15 s. Si no responde, la nube pasa a «No se pudo conectar con Firebase» y los botones quedan libres en lugar de quedarse en «Conectando…». Se reintenta sola al recuperar la red o al volver a la pestaña, y con «Guardar ahora». Si el error persiste, suele ser la red (un bloqueador de anuncios, DNS privado o un Wi‑Fi que filtra dominios de Google).
 - **La API key no se sincroniza**: en un dispositivo nuevo tendrás que introducirla otra vez. El código es la única llave: quien lo tenga puede leer y escribir esa partida, así que no lo compartas.
 
 ### En el móvil
@@ -202,16 +200,16 @@ Abre `http://localhost:5173`. La primera vez se abre **Ajustes → Conexión** p
 
 ### Stack
 
-**Vite + Vue 3 + TypeScript + Tailwind CSS 4**, con `vite-plugin-pwa` para el service worker y el manifest, **Vitest** para las pruebas y **Firebase RTDB** opcional (cargado bajo demanda). Sin backend propio: un rewrite de Vercel hace de proxy para OpenCode.
+**Vite + Vue 3 + TypeScript + Tailwind CSS 4**, con `vite-plugin-pwa` para el service worker y el manifest, **Vitest** para las pruebas y **Firebase Realtime Database** opcional (API REST por HTTPS, sin SDK). Sin backend propio: un rewrite de Vercel hace de proxy para OpenCode.
 
 ### Nube con Firebase (opcional)
 
 1. Crea un proyecto en Firebase y activa **Realtime Database**.
-2. Copia `.env.example` a `.env.local` y rellena `VITE_FIREBASE_*`. `VITE_FIREBASE_DATABASE_URL` es la URL de tu instancia (por ejemplo, `https://tu-proyecto-default-rtdb.firebaseio.com`).
+2. Copia `.env.example` a `.env.local` y rellena `VITE_FIREBASE_DATABASE_URL`, la URL de tu instancia (por ejemplo, `https://tu-proyecto-default-rtdb.firebaseio.com`). Es la única variable que usa la app.
 3. Publica las reglas de `database.rules.json` en la consola de Firebase (*Realtime Database → Reglas*) o con `firebase deploy --only database` (el `firebase.json` ya apunta al archivo).
-4. En Vercel, añade las mismas variables de entorno.
+4. En Vercel, añade la misma variable de entorno.
 
-Las reglas permiten leer y escribir solo bajo `/saves/{code}`, donde `code` es un hexadecimal de 32 caracteres. El código actúa como llave de la partida. Para un despliegue público, considera activar **Firebase App Check** y limita el uso del proyecto. Si restringes la API key en Google Cloud, autoriza `localhost` y tu dominio de producción. Si faltan las variables, la app funciona igual y la sección Nube queda desactivada.
+Las reglas permiten leer y escribir solo bajo `/saves/{code}`, donde `code` es un hexadecimal de 32 caracteres. El código actúa como llave de la partida. Para un despliegue público, limita el uso del proyecto desde la consola de Firebase. Si falta la variable, la app funciona igual y la sección Nube queda desactivada.
 
 ### Scripts
 
@@ -243,8 +241,7 @@ src/
 │  ├─ usePwa.ts · useToasts.ts · useConfirm.ts · useDialogStack.ts
 ├─ lib/
 │  ├─ api.ts                  cliente OpenAI-compatible con streaming y reintentos
-│  ├─ cloud.ts                código de sincronización y snapshots de Firebase RTDB
-│  ├─ firebase.ts             configuración y carga diferida del SDK de Firebase
+│  ├─ cloud.ts                código de sincronización y API REST de Firebase RTDB (lectura, guardado y consulta de cambios)
 │  ├─ sse.ts                  parser SSE y lectura de errores de contexto
 │  ├─ dice.ts                 tiradas, modos, sugerencias y lectura de resultados
 │  ├─ gameState.ts            memoria: secciones, fusión parcial, [TRAMA] e instantáneas

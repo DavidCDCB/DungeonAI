@@ -36,6 +36,7 @@ import { CONTEXT_WINDOWS, DEFAULT_SETTINGS, REASONING_LEVELS } from '../types'
 import { PROVIDERS, providerFor, requiresApiKey } from '../lib/providers'
 import { CancelledError, formatLore, generateLore, testConnection, type ConnectionTest } from '../lib/api'
 import { formatSyncCode } from '../lib/cloud'
+import { suggestModels } from '../lib/modelHistory'
 import { LORE_TEMPLATE, LORE_WARN_RATIO, MAX_LORE_CHARS, loreTokens, normalizeLore } from '../lib/lore'
 import { promptBase } from '../lib/prompt'
 import { storageBytes, storageQuota } from '../lib/storage'
@@ -69,6 +70,8 @@ const {
   cloudLastSaved,
   cloudRemoteAt,
   cloudBusy,
+  modelHistory,
+  rememberUsedModel,
   previewVoice,
   stopSpeech,
 } = useGame()
@@ -153,6 +156,8 @@ const dirty = computed(() =>
   (Object.keys(draft) as Array<keyof Settings>).some((key) => draft[key] !== settings[key]),
 )
 const customPromptActive = computed(() => Boolean(draft.customPrompt.trim()))
+const recentModels = computed(() => suggestModels(modelHistory.value, draft.baseUrl, '', 8))
+const modelMatches = computed(() => suggestModels(modelHistory.value, draft.baseUrl, draft.model, 8))
 const loreTokenCount = computed(() => loreTokens(draft.lore))
 const loreShare = computed(() => loreTokenCount.value / Math.max(draft.contextWindow, 1))
 const loreTooBig = computed(() => loreShare.value > LORE_WARN_RATIO)
@@ -397,6 +402,7 @@ async function runTest() {
   testResult.value = null
   try {
     testResult.value = await testConnection({ ...draft })
+    if (testResult.value.ok) rememberUsedModel(draft.model, draft.baseUrl)
   } finally {
     testing.value = false
   }
@@ -588,10 +594,44 @@ async function onInstall() {
         <p class="field-hint">Se guarda solo en este navegador y viaja como cabecera Authorization.</p>
       </label>
 
-      <label class="block">
-        <span class="field-label">Modelo</span>
-        <input v-model="draft.model" class="field font-mono text-[12.5px] pointer-coarse:text-base" placeholder="claude-haiku-5-5" spellcheck="false">
-      </label>
+      <div>
+        <label class="block">
+          <span class="field-label">Modelo</span>
+          <input
+            v-model="draft.model"
+            list="model-history-options"
+            class="field font-mono text-[12.5px] pointer-coarse:text-base"
+            placeholder="claude-haiku-5-5"
+            spellcheck="false"
+            autocomplete="off"
+          >
+          <datalist id="model-history-options">
+            <option
+              v-for="item in modelMatches"
+              :key="`${item.baseUrl}:${item.model}`"
+              :value="item.model"
+            />
+          </datalist>
+          <p v-if="recentModels.length" class="field-hint">
+            Empieza a escribir: se autocompletan los modelos que ya usaste con este proveedor.
+          </p>
+        </label>
+        <div v-if="recentModels.length" class="mt-2">
+          <p class="field-label">Modelos recientes</p>
+          <div class="flex flex-wrap gap-1.5">
+            <button
+              v-for="item in recentModels"
+              :key="`${item.baseUrl}:${item.model}`"
+              type="button"
+              class="chip font-mono text-[11px]"
+              title="Usar este modelo"
+              @click="draft.model = item.model"
+            >
+              {{ item.model }}
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div>
         <span class="field-label">Razonamiento</span>

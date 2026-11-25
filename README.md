@@ -137,6 +137,7 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 ### Conexión y contexto
 
 - Proveedores OpenAI-compatibles: OpenCode, OpenAI, OpenRouter, Groq, DeepSeek, Ollama, LM Studio y personalizado.
+- **Modelo con autocompletado:** recuerda los modelos ya usados con el proveedor actual y los sugiere al empezar a escribir; también ofrece accesos rápidos a los recientes. El historial se guarda en este navegador.
 - **Ventana de contexto** configurable (32k–1M). Si el modelo informa una ventana menor, la app la detecta, reintenta y la guarda.
 - Reintentos automáticos: sin `stream_options`, sin streaming, sin `reasoning_effort` o con menos razonamiento, según lo que soporte el proveedor.
 - Contador de tokens sin porcentaje: contexto y razonamiento del último turno, con el desglose al pulsarlo.

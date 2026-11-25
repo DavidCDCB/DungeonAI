@@ -14,6 +14,7 @@ import { createStore, entries, promisifyRequest, type UseStore } from 'idb-keyva
 import type { ChatMessage, DiceGroup, Settings, TokenUsage } from '../types'
 import { normalizeDiceGroups } from './dice'
 import { createMessage } from './messages'
+import { normalizeModelHistory, type ModelHistoryEntry } from './modelHistory'
 import { normalizeSettings } from './transfer'
 
 const DB_NAME = 'dungeon-ai-web'
@@ -24,6 +25,7 @@ const MESSAGE_PREFIX = 'msg:'
 const INDEX_KEY = 'messages'
 const CLOUD_ENABLED_KEY = 'cloud:enabled'
 const CLOUD_CODE_KEY = 'cloud:code'
+const MODEL_HISTORY_KEY = 'models:history'
 const LEGACY_PREFIX = 'dungeon-ai-web:'
 const LEGACY_KEYS = ['settings', 'messages', 'state', 'usage', 'dice', 'draft']
 
@@ -351,6 +353,21 @@ export function saveCloudSettings(value: CloudSettings): Promise<boolean> {
   return enqueue([
     { key: CLOUD_ENABLED_KEY, value: value.enabled },
     value.code ? { key: CLOUD_CODE_KEY, value: value.code } : { key: CLOUD_CODE_KEY, remove: true },
+  ])
+}
+
+/** Historial local de modelos usados, agrupado por URL base. No viaja en la exportación. */
+export function loadModelHistory(): ModelHistoryEntry[] {
+  assertReady()
+  return normalizeModelHistory(cache.get(MODEL_HISTORY_KEY))
+}
+
+export function saveModelHistory(history: readonly ModelHistoryEntry[]): Promise<boolean> {
+  const value = normalizeModelHistory(history)
+  return enqueue([
+    value.length
+      ? { key: MODEL_HISTORY_KEY, value }
+      : { key: MODEL_HISTORY_KEY, remove: true },
   ])
 }
 

@@ -12,6 +12,7 @@ import {
   loadDiceGroups,
   loadDraft,
   loadMessages,
+  loadModelHistory,
   loadSettings,
   loadState,
   loadUsage,
@@ -20,6 +21,7 @@ import {
   saveDiceGroups,
   saveDraft,
   saveMessages,
+  saveModelHistory,
   saveSettings,
   saveState,
   saveUsage,
@@ -113,6 +115,22 @@ describe('Persistencia en IndexedDB', () => {
 
     await clearGameStorage()
     expect(loadCloudSettings()).toEqual({ enabled: true, code })
+  })
+
+  it('conserva el historial de modelos al reiniciar y al borrar la partida', async () => {
+    await initStorage(fakeLocal())
+    expect(loadModelHistory()).toEqual([])
+    const history = [
+      { model: 'gpt-5', baseUrl: 'https://api.openai.com/v1', lastUsed: 20 },
+      { model: 'o3', baseUrl: 'https://api.openai.com/v1', lastUsed: 10 },
+    ]
+    expect(await saveModelHistory(history)).toBe(true)
+
+    await restart()
+    expect(loadModelHistory().map((item) => item.model)).toEqual(['gpt-5', 'o3'])
+
+    await clearGameStorage()
+    expect(loadModelHistory().map((item) => item.model)).toEqual(['gpt-5', 'o3'])
   })
 
   it('guarda cada mensaje como un registro y solo escribe lo que cambió', async () => {

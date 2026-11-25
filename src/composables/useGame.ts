@@ -55,6 +55,7 @@ import { chunkForSpeech, cleanForSpeech } from '../lib/ttsText'
 import { estimateOffset, spokenWords, wordIndexAt } from '../lib/speechHighlight'
 import { formatTokens } from '../lib/format'
 import { charsToTokens } from '../lib/contextBudget'
+import { rememberModel, type ModelHistoryEntry } from '../lib/modelHistory'
 import { createPaceMeter } from '../lib/pace'
 import {
   clearDiceGroups,
@@ -63,11 +64,13 @@ import {
   loadDiceGroups,
   loadDraft,
   loadMessages,
+  loadModelHistory,
   loadSettings,
   loadState,
   loadUsage,
   saveCloudSettings,
   saveDiceGroups,
+  saveModelHistory,
   saveDraft,
   saveMessages,
   saveSettings,
@@ -83,6 +86,7 @@ const { push: toast } = useToasts()
 const { ask: confirmAction } = useConfirm()
 
 const settings = reactive<Settings>(loadSettings(DEFAULT_SETTINGS))
+const modelHistory = ref<ModelHistoryEntry[]>(loadModelHistory())
 const messages = ref<ChatMessage[]>(loadMessages())
 const gameState = ref(loadState())
 const usage = ref<TokenUsage | null>(loadUsage())
@@ -351,6 +355,14 @@ function persistGame() {
 function persistSettings() {
   track(saveSettings(settings))
   scheduleCloudSave()
+}
+
+/** Guarda el modelo en el historial local para autocompletarlo la próxima vez. */
+function rememberUsedModel(model = settings.model, baseUrl = settings.baseUrl) {
+  const next = rememberModel(modelHistory.value, model, baseUrl)
+  if (next === modelHistory.value) return
+  modelHistory.value = next
+  track(saveModelHistory(next))
 }
 
 // ---------------------------------------------------------------------------
@@ -851,6 +863,7 @@ async function generateResponse(): Promise<boolean> {
       onProgress,
     })
     applyProgress()
+    rememberUsedModel(settings.model, settings.baseUrl)
     const finishedAt = Date.now()
     const firstTokenAt = reasoningStartedAt.value || contentStartedAt.value
     const speed = result.streamed && firstTokenAt ? rate(result.usage.completion, firstTokenAt, finishedAt) : null
@@ -1597,6 +1610,7 @@ function applyProgressData(data: ProgressFile) {
   persistSettings()
   persistGame()
   track(saveDiceGroups(diceGroups.value))
+  rememberUsedModel(settings.model, settings.baseUrl)
   refreshBrowserVoices()
   requestScroll(messages.value.length ? messages.value[messages.value.length - 1].id : 'bottom')
 }
@@ -1634,6 +1648,7 @@ function init() {
 export function useGame() {
   return {
     settings,
+    modelHistory,
     messages,
     displayMessages,
     gameState,
@@ -1702,6 +1717,7 @@ export function useGame() {
     cancelTurn,
     newGame,
     saveConfig,
+    rememberUsedModel,
     updateSetting,
     updateMemory,
     setAutoRead,

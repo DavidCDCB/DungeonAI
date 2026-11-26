@@ -9,8 +9,13 @@ import {
   sections,
 } from '../src/lib/gameState'
 import { createMessage, streamingPreview } from '../src/lib/messages'
-import { MEMORY_EFFORT } from '../src/lib/api'
-import { INSTRUCCION_ESTADO, buildStatePrompt, buildSystemPrompt, statePromptBase } from '../src/lib/prompt'
+import {
+  COMPACTION_SYSTEM_PROMPT,
+  INSTRUCCION_ESTADO,
+  buildStatePrompt,
+  buildSystemPrompt,
+  statePromptBase,
+} from '../src/lib/prompt'
 
 const MEMORIA = [
   'Escena: Taberna, día 1, noche.',
@@ -143,8 +148,29 @@ describe('Prompt del Cronista', () => {
     expect(INSTRUCCION_ESTADO).toMatch(/\[ESTADO\]/)
   })
 
-  it('el Cronista razona siempre con esfuerzo bajo, sea cual sea el del DM', () => {
-    expect(MEMORY_EFFORT).toBe('low')
+  it('el Cronista evita duplicados y usa Pistas y documentos', () => {
+    expect(statePromptBase).toContain('Pistas y documentos')
+    expect(statePromptBase).toMatch(/cada hecho aparece una sola vez/i)
+    expect(statePromptBase).toMatch(/No transcribas cartas ni notas enteras/i)
+    expect(statePromptBase).toMatch(/No copies diálogos/i)
+  })
+
+  it('no compacta la memoria automáticamente', () => {
+    const prompt = buildStatePrompt(DEFAULT_SETTINGS, `Escena: ${'x'.repeat(12_001)}`)
+    expect(prompt).not.toContain('MEMORIA DEMASIADO LARGA')
+    expect(statePromptBase).not.toMatch(/Compacta al reescribir/i)
+    expect(statePromptBase).not.toMatch(/2\.000 palabras/)
+    expect(INSTRUCCION_ESTADO).not.toMatch(/compactes/i)
+  })
+
+  it('la compactación es manual y tiene su propio prompt', () => {
+    expect(COMPACTION_SYSTEM_PROMPT).toMatch(/editor de memoria/i)
+    expect(COMPACTION_SYSTEM_PROMPT).toMatch(/No añadas información nueva/i)
+    expect(COMPACTION_SYSTEM_PROMPT).toMatch(/Responde solo con el bloque/i)
+    expect(COMPACTION_SYSTEM_PROMPT).toContain('[ESTADO]')
+    expect(COMPACTION_SYSTEM_PROMPT).toContain('[/ESTADO]')
+    expect(COMPACTION_SYSTEM_PROMPT).toContain('Pistas y documentos')
+    expect(COMPACTION_SYSTEM_PROMPT).toContain('Trama (solo DM)')
   })
 
   it('el DM sabe que no escribe el estado y que anota la trama con [TRAMA]', () => {

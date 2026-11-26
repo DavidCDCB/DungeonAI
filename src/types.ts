@@ -20,7 +20,12 @@ export interface Settings {
   apiKey: string
   baseUrl: string
   model: string
+  /** Esfuerzo del DM al narrar y resolver el turno. */
   reasoning: Reasoning
+  /** Esfuerzo del Cronista de estado al actualizar la memoria. */
+  memoryReasoning: Reasoning
+  /** Esfuerzo del Arquitecto de Opciones. */
+  optionsReasoning: Reasoning
   theme: string
   world: string
   character: string
@@ -94,6 +99,8 @@ export const DEFAULT_SETTINGS: Settings = {
   baseUrl: '/api/opencode',
   model: 'claude-haiku-5-5',
   reasoning: 'high',
+  memoryReasoning: 'high',
+  optionsReasoning: 'high',
   theme: 'Alta Fantasía',
   world: 'Faerûn (Reinos Olvidados)',
   character: 'Sabrina',

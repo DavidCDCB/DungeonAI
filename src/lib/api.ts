@@ -404,7 +404,7 @@ export async function chatWithFallback(
 
 /**
  * Segunda llamada de cada turno: genera las 5 opciones de acción a partir de la narración ya
- * escrita. Usa el mismo esfuerzo de razonamiento que la primera y no hace streaming.
+ * escrita. Recibe su propio esfuerzo (`optionsReasoning`) y no hace streaming.
  */
 export async function requestOptions(
   settings: Settings,
@@ -422,27 +422,44 @@ export async function requestOptions(
 }
 
 /**
- * Esfuerzo fijo del Cronista de estado: su tarea es puntual y mecánica (anotar lo que cambió)
- * y bloquea el siguiente turno, así que no necesita razonar como el DM. Si el modelo no admite
- * `reasoning_effort`, el reintento automático de `chatWithFallback` lo quita.
- */
-export const MEMORY_EFFORT: Reasoning = 'low'
-
-/**
  * Llamada del Cronista de estado: devuelve el [ESTADO] con las secciones que cambiaron.
- * Usa siempre `MEMORY_EFFORT` y no hace streaming (nadie lee su texto mientras llega).
+ * Recibe su propio esfuerzo (`memoryReasoning`) y no hace streaming (nadie lee su texto mientras llega).
  */
 export async function requestMemoryUpdate(
   settings: Settings,
   systemPrompt: string,
   history: ChatMessage[],
+  effort: Reasoning | null,
   signal?: AbortSignal,
 ): Promise<string> {
   const result = await chatWithFallback(settings, systemPrompt, history, {
     stream: false,
-    effort: MEMORY_EFFORT,
+    effort,
     signal,
   })
+  return result.content
+}
+
+/**
+ * Compactación manual de la memoria: reescribe el estado completo con el esfuerzo del Cronista.
+ * No se ejecuta nunca dentro del turno; solo cuando el jugador pulsa «Compactar».
+ */
+export async function requestMemoryCompaction(
+  settings: Settings,
+  systemPrompt: string,
+  memory: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const result = await chatWithFallback(
+    settings,
+    systemPrompt,
+    [createMessage('user', `Memoria actual:\n\n${memory}`)],
+    {
+      stream: false,
+      effort: settings.memoryReasoning,
+      signal,
+    },
+  )
   return result.content
 }
 
@@ -459,11 +476,12 @@ async function requestLore(
   options: LoreOptions,
 ): Promise<{ lore: string; unknown: boolean }> {
   const result = await chatWithFallback(
-    { ...settings, reasoning: settings.loreReasoning ?? 'medium' },
+    settings,
     system,
     [createMessage('user', request)],
     {
       stream: settings.stream,
+      effort: settings.loreReasoning,
       signal: options.signal,
       onProgress: (progress) => options.onProgress?.(progress.content),
     },

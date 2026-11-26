@@ -165,11 +165,21 @@ export function normalizeSettings(value: any): Settings {
   const reasoning = REASONING_LEVELS.includes(raw.reasoning)
     ? raw.reasoning
     : DEFAULT_SETTINGS.reasoning
+  // Los ajustes antiguos tenían un solo esfuerzo para todos los agentes:
+  // si faltan los nuevos campos, heredan el del DM.
+  const memoryReasoning = REASONING_LEVELS.includes(raw.memoryReasoning)
+    ? raw.memoryReasoning
+    : reasoning
+  const optionsReasoning = REASONING_LEVELS.includes(raw.optionsReasoning)
+    ? raw.optionsReasoning
+    : reasoning
   return {
     apiKey: text('apiKey', ''),
     baseUrl: text('baseUrl', DEFAULT_SETTINGS.baseUrl) || DEFAULT_SETTINGS.baseUrl,
     model: text('model', DEFAULT_SETTINGS.model) || DEFAULT_SETTINGS.model,
     reasoning,
+    memoryReasoning,
+    optionsReasoning,
     theme: text('theme', DEFAULT_SETTINGS.theme),
     world: text('world', DEFAULT_SETTINGS.world),
     character: text('character', DEFAULT_SETTINGS.character),

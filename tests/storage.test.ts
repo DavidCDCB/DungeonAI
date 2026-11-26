@@ -277,6 +277,34 @@ describe('Migración desde localStorage', () => {
     expect(loadMessages().map((m) => m.id)).toEqual(ids)
   })
 
+  it('hereda el esfuerzo único en el Cronista y las Opciones', async () => {
+    await initStorage(
+      fakeLocal({
+        'dungeon-ai-web:settings': JSON.stringify({ reasoning: 'max', world: 'Skyrim' }),
+      }),
+    )
+    const settings = loadSettings(DEFAULT_SETTINGS)
+    expect(settings.reasoning).toBe('max')
+    expect(settings.memoryReasoning).toBe('max')
+    expect(settings.optionsReasoning).toBe('max')
+  })
+
+  it('respeta los esfuerzos por agente ya guardados', async () => {
+    await initStorage(
+      fakeLocal({
+        'dungeon-ai-web:settings': JSON.stringify({
+          reasoning: 'high',
+          memoryReasoning: 'low',
+          optionsReasoning: 'max',
+        }),
+      }),
+    )
+    const settings = loadSettings(DEFAULT_SETTINGS)
+    expect(settings.reasoning).toBe('high')
+    expect(settings.memoryReasoning).toBe('low')
+    expect(settings.optionsReasoning).toBe('max')
+  })
+
   it('migra una sola vez: tras vaciar IndexedDB no «resucita» el localStorage', async () => {
     await initStorage(legacy())
     await clearGameStorage()

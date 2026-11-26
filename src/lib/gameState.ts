@@ -24,6 +24,10 @@ export const MEMORY_SECTIONS: SectionInfo[] = [
   },
   { title: 'Misiones', alias: ['misiones', 'mision', 'misión', 'objetivos'] },
   {
+    title: 'Pistas y documentos',
+    alias: ['pistas y documentos', 'pistas', 'documentos', 'evidencias', 'pruebas'],
+  },
+  {
     title: 'PNJs y notas',
     alias: ['pnjs y notas', 'pnjs', 'pnj', 'personajes', 'notas'],
   },

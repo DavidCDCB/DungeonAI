@@ -1,6 +1,7 @@
 import promptBase from '../prompts/dungeon_master.md?raw'
 import optionsPromptBase from '../prompts/dungeon_master_opciones.md?raw'
 import statePromptBase from '../prompts/dungeon_master_estado.md?raw'
+import compactionPromptBase from '../prompts/dungeon_master_compactar.md?raw'
 import type { Settings } from '../types'
 import { hasFullState } from './gameState'
 import { loreBlock } from './lore'
@@ -29,6 +30,12 @@ export const INSTRUCCION_OPCIONES =
 export const INSTRUCCION_ESTADO =
   '<Actualiza la memoria con lo ocurrido en el último turno (la acción del jugador y la narración del DM), siguiendo tus instrucciones. Responde solo con el bloque [ESTADO] … [/ESTADO] con las secciones que cambiaron.>'
 
+/**
+ * Prompt del botón «Compactar» del editor de memoria. Es una acción manual del jugador,
+ * nunca se ejecuta dentro del turno.
+ */
+export const COMPACTION_SYSTEM_PROMPT = compactionPromptBase
+
 function replaceAllLiteral(text: string, needle: string, value: string): string {
   return text.split(needle).join(value)
 }
@@ -46,7 +53,7 @@ function fillPlaceholders(prompt: string, settings: Settings): string {
 
 /**
  * Prompt de sistema de la segunda llamada: el Arquitecto de Opciones, con el canon del mundo
- * y la memoria ya actualizada con el turno que acaba de narrarse.
+ * y la memoria vigente al empezar el turno (no espera al Cronista).
  */
 export function buildOptionsPrompt(settings: Settings, gameState: string): string {
   let result = fillPlaceholders(optionsPromptBase, settings).trimEnd()

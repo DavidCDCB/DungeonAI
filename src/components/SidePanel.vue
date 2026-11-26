@@ -15,6 +15,7 @@ import {
   NotebookPen,
   Pencil,
   ScrollText,
+  Search,
   Skull,
   Swords,
   Users,
@@ -46,6 +47,7 @@ const icons: Record<string, Component> = {
   Dinero: Coins,
   'Condiciones y efectos': HeartPulse,
   Misiones: Flag,
+  'Pistas y documentos': Search,
   'PNJs y notas': Users,
   'Trama (solo DM)': Skull,
   Notas: NotebookPen,
@@ -149,8 +151,8 @@ const worldTokens = computed(() => loreTokens(settings.lore))
         </button>
       </div>
       <p v-if="!entries.length" class="mt-3 text-xs leading-5 text-muted">
-        Aún no hay memoria. El DM la crea en cada turno con la hoja de personaje, el inventario, el
-        dinero, las misiones y los PNJs.
+        Aún no hay memoria. El Cronista la crea en cada turno con la hoja de personaje, el inventario,
+        el dinero, las misiones, las pistas y los PNJs.
       </p>
       <div v-else class="mt-2 divide-y divide-divider">
         <template v-for="entry in details" :key="entry.title">

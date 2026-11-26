@@ -21,9 +21,20 @@ describe('GameState', () => {
   })
 
   it('reconoce alias de secciones', () => {
-    const result = sections('Equipo: espada\nOro: 30\nEstados: herido')
+    const result = sections('Equipo: espada\nOro: 30\nEstados: herido\nPistas: una carta del alcalde')
     expect(result.get('Inventario')).toBe('espada')
     expect(result.get('Dinero')).toBe('30')
     expect(result.get('Condiciones y efectos')).toBe('herido')
+    expect(result.get('Pistas y documentos')).toBe('una carta del alcalde')
+  })
+
+  it('admite varias líneas dentro de Pistas y documentos', () => {
+    const result = sections(
+      'Pistas y documentos: nota de Beverly (leída)\n- llave de latón\n- sedán gris\nMisiones: taquilla 17',
+    )
+    expect(result.get('Pistas y documentos')).toBe(
+      'nota de Beverly (leída)\n- llave de latón\n- sedán gris',
+    )
+    expect(result.get('Misiones')).toBe('taquilla 17')
   })
 })

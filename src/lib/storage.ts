@@ -256,7 +256,9 @@ export function loadSettings(defaults: Settings): Settings {
   const stored = cache.get('settings')
   if (!stored || typeof stored !== 'object') return { ...defaults }
   try {
-    return normalizeSettings({ ...defaults, ...(stored as Partial<Settings>) })
+    // Se normaliza lo guardado (no una mezcla con los valores por defecto) para que los
+    // ajustes antiguos puedan heredar el esfuerzo único en los campos nuevos.
+    return normalizeSettings(stored)
   } catch {
     return { ...defaults }
   }

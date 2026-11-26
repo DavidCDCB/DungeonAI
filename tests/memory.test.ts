@@ -9,6 +9,7 @@ Inventario: bastón, grimorio
 Dinero: 12 PO
 Condiciones y efectos: ninguna
 Misiones: encontrar al gato
+Pistas y documentos: una carta del alcalde
 PNJs y notas: Barliman, amistoso
 Trama (solo DM): el posadero es un cambiaformas`
 
@@ -39,6 +40,7 @@ describe('Memoria con el formato del prompt', () => {
       'Dinero',
       'Condiciones y efectos',
       'Misiones',
+      'Pistas y documentos',
       'PNJs y notas',
       'Trama (solo DM)',
     ])

@@ -14,6 +14,7 @@ import {
   ApiError,
   CancelledError,
   chatWithFallback,
+  requestMemoryCompaction,
   requestMemoryUpdate,
   requestOptions,
   type StreamProgress,
@@ -27,6 +28,7 @@ import {
   streamingPreview,
 } from '../lib/messages'
 import {
+  COMPACTION_SYSTEM_PROMPT,
   INSTRUCCION_ESTADO,
   INSTRUCCION_OPCIONES,
   buildOptionsPrompt,
@@ -103,6 +105,7 @@ const optionsPending = ref(false)
  * turno del DM espera a que termine (necesita la memoria al día).
  */
 const memoryPending = ref(false)
+const compacting = ref(false)
 /** Intento en curso de los agentes en segundo plano (1 = el primero; se reintentan solos). */
 const agentAttempt = ref(1)
 /** Final del razonamiento recibido: solo alimenta el fondo difuminado de la espera. */
@@ -397,7 +400,7 @@ function ensureConfigured(): boolean {
   return false
 }
 
-/** Prompt del Arquitecto de Opciones, con la memoria ya actualizada con el último turno. */
+/** Prompt del Arquitecto de Opciones, con la memoria vigente antes de que corra el Cronista. */
 function optionsSystemPrompt(): string {
   return buildOptionsPrompt(settings, gameState.value)
 }
@@ -859,6 +862,7 @@ async function generateResponse(): Promise<boolean> {
     const history = [...messages.value]
     const result = await chatWithFallback(settings, prompt, history, {
       stream: settings.stream,
+      effort: settings.reasoning,
       signal: controller.signal,
       onProgress,
     })
@@ -898,8 +902,8 @@ async function generateResponse(): Promise<boolean> {
         ? 'El Dungeon Master pide una tirada.'
         : 'El Dungeon Master ha respondido.',
     )
-    // Tras la narración, en paralelo con la lectura: primero la memoria y después las opciones.
-    startPostTurn(assistant, history, result.effort, !legacyState)
+    // Tras la narración, en paralelo con la lectura: la memoria y las opciones.
+    startPostTurn(assistant, history, !legacyState)
     if (settings.autoRead) speak(assistant, true)
     return true
   } catch (error) {
@@ -967,7 +971,7 @@ function memoryHistory(id: string): ChatMessage[] {
  * Cronista de estado: lee la narración y actualiza la memoria (solo las secciones que cambiaron).
  * Nunca rechaza: si falla avisa, y el siguiente turno repetirá el intento con lo pendiente.
  */
-async function refreshMemory(message: ChatMessage): Promise<void> {
+async function refreshMemory(message: ChatMessage, effort: Reasoning | null): Promise<void> {
   cancelMemory()
   const controller = new AbortController()
   memoryController = controller
@@ -982,6 +986,7 @@ async function refreshMemory(message: ChatMessage): Promise<void> {
           settings,
           buildStatePrompt(settings, gameState.value),
           [...memoryHistory(message.id), createMessage('user', INSTRUCCION_ESTADO)],
+          effort,
           controller.signal,
         )
         const parsed = parseStateReply(reply)
@@ -1015,31 +1020,57 @@ async function refreshMemory(message: ChatMessage): Promise<void> {
 }
 
 /**
- * Después de cada narración: actualiza la memoria (si hace falta) y luego pide las opciones.
- * Las opciones se piden con la memoria ya actualizada; si el jugador actúa antes, se omiten.
+ * Compactación manual: reescribe la memoria completa con el modelo y devuelve el resultado
+ * SIN aplicarlo. El jugador lo revisa en el editor y decide si lo guarda.
+ */
+async function compactMemory(memory = gameState.value): Promise<string> {
+  if (compacting.value) throw new Error('Ya se está compactando la memoria.')
+  if (loading.value || memoryPending.value) {
+    throw new Error('Espera a que termine el turno y la actualización de memoria.')
+  }
+  if (!configured.value) throw new Error('Conecta un proveedor antes de compactar la memoria.')
+  if (!memory.trim()) throw new Error('La memoria está vacía.')
+
+  compacting.value = true
+  try {
+    return await withRetries(async () => {
+      const reply = await requestMemoryCompaction(settings, COMPACTION_SYSTEM_PROMPT, memory)
+      const parsed = parseStateReply(reply)
+      if (parsed === null || !parsed.trim()) {
+        throw new ApiError('La compactación no devolvió una memoria válida.')
+      }
+      return mergeState(memory, parsed, { partial: true })
+    })
+  } finally {
+    compacting.value = false
+  }
+}
+
+/**
+ * Después de cada narración: la memoria y las opciones corren en paralelo. Las opciones usan
+ * la memoria vigente en el momento de empezar; no esperan al Cronista. El siguiente turno sí
+ * espera a que la memoria termine.
  */
 function startPostTurn(
   message: ChatMessage,
   history: ChatMessage[],
-  effort: Reasoning | null,
   updateMemory: boolean,
 ) {
-  const next = () => {
-    const last = lastMessage.value
-    if (last?.id === message.id && needsOptions(last)) {
-      void fetchOptions(last, history, optionsSystemPrompt(), effort)
-    }
+  const last = lastMessage.value
+  const promptForOptions =
+    last?.id === message.id && needsOptions(last) ? optionsSystemPrompt() : ''
+
+  if (updateMemory) {
+    const task = refreshMemory(message, settings.memoryReasoning)
+    memoryTask = task
+    void task.then(() => {
+      if (memoryTask === task) memoryTask = null
+    })
   }
-  if (!updateMemory) {
-    next()
-    return
+
+  if (promptForOptions && last) {
+    void fetchOptions(last, history, promptForOptions, settings.optionsReasoning)
   }
-  const task = refreshMemory(message)
-  memoryTask = task
-  void task.then(() => {
-    if (memoryTask === task) memoryTask = null
-    next()
-  })
 }
 
 /** Reintento manual de la memoria del último turno (aviso de error). */
@@ -1047,7 +1078,11 @@ function retryMemory() {
   const last = lastMessage.value
   if (loading.value || memoryPending.value || !last || last.role !== 'assistant') return
   if (!ensureConfigured()) return
-  startPostTurn(last, messages.value.slice(0, -1), settings.reasoning, true)
+  const task = refreshMemory(last, settings.memoryReasoning)
+  memoryTask = task
+  void task.then(() => {
+    if (memoryTask === task) memoryTask = null
+  })
 }
 
 /** Tras una tirada pendiente no hay opciones; en el resto de turnos las genera la segunda llamada. */
@@ -1063,7 +1098,7 @@ function cancelOptions() {
 }
 
 /**
- * Segunda llamada: pide las 5 opciones con el mismo esfuerzo que la narración. No bloquea
+ * Segunda llamada: pide las 5 opciones con su propio esfuerzo (`optionsReasoning`). No bloquea
  * al jugador: si escribe otra acción, regenera o cambia la partida, la llamada se descarta.
  */
 async function fetchOptions(
@@ -1126,12 +1161,12 @@ async function fetchOptions(
   }
 }
 
-/** Reintento manual (o para partidas antiguas sin opciones): usa el esfuerzo de los ajustes. */
+/** Reintento manual (o para partidas antiguas sin opciones): usa el esfuerzo de las opciones. */
 function generateOptions() {
   const last = lastMessage.value
   if (loading.value || optionsPending.value || !last || !needsOptions(last)) return
   if (!ensureConfigured()) return
-  void fetchOptions(last, messages.value.slice(0, -1), optionsSystemPrompt(), settings.reasoning)
+  void fetchOptions(last, messages.value.slice(0, -1), optionsSystemPrompt(), settings.optionsReasoning)
 }
 
 async function send(text: string): Promise<boolean> {
@@ -1657,6 +1692,7 @@ export function useGame() {
     phase,
     optionsPending,
     memoryPending,
+    compacting,
     agentAttempt,
     reasoningTail,
     optionsMissing,
@@ -1720,6 +1756,7 @@ export function useGame() {
     rememberUsedModel,
     updateSetting,
     updateMemory,
+    compactMemory,
     setAutoRead,
     openSettings,
     exportProgress,

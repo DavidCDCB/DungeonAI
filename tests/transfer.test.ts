@@ -126,6 +126,42 @@ describe('Opciones de exportación', () => {
     expect(restored.settings.textSize).toBe('md')
     expect(restored.settings.stream).toBe(false)
   })
+
+  it('migra el esfuerzo único a Cronista y Opciones y valida cada agente', () => {
+    const legacy = parseProgressJson(
+      JSON.stringify({
+        app: PROGRESS_APP,
+        version: 1,
+        messages: [],
+        settings: { reasoning: 'max' },
+      }),
+    )
+    expect(legacy.settings.reasoning).toBe('max')
+    expect(legacy.settings.memoryReasoning).toBe('max')
+    expect(legacy.settings.optionsReasoning).toBe('max')
+
+    const custom = parseProgressJson(
+      JSON.stringify({
+        app: PROGRESS_APP,
+        version: 1,
+        messages: [],
+        settings: { reasoning: 'high', memoryReasoning: 'low', optionsReasoning: 'max' },
+      }),
+    )
+    expect(custom.settings.memoryReasoning).toBe('low')
+    expect(custom.settings.optionsReasoning).toBe('max')
+
+    const invalid = parseProgressJson(
+      JSON.stringify({
+        app: PROGRESS_APP,
+        version: 1,
+        messages: [],
+        settings: { reasoning: 'high', memoryReasoning: 'ultra', optionsReasoning: 7 },
+      }),
+    )
+    expect(invalid.settings.memoryReasoning).toBe('high')
+    expect(invalid.settings.optionsReasoning).toBe('high')
+  })
 })
 
 describe('Velocidad del turno', () => {

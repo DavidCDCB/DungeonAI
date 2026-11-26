@@ -36,7 +36,7 @@ const { online, canInstall, install } = usePwa()
       <button
         type="button"
         class="hidden items-center gap-2 rounded-full border border-divider bg-surface px-3 py-1.5 text-[11px] text-muted transition hover:border-gold-dim hover:text-parchment lg:inline-flex"
-        title="Modelo y razonamiento"
+        title="Modelo y razonamiento del DM"
         @click="openSettings('connection')"
       >
         <span class="h-1.5 w-1.5 rounded-full" :class="online ? 'bg-success' : 'bg-warning'" />

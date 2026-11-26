@@ -32,7 +32,7 @@ const visibleCount = ref(PAGE)
 const follow = ref(false)
 const showJump = ref(false)
 
-/** La última respuesta lleva opciones: se están generando o se generarán tras actualizar la memoria. */
+/** La última respuesta lleva opciones: se están generando o aún no empezaron a generarse. */
 const optionsComing = computed(() => {
   if (optionsPending.value) return true
   const last = messages.value[messages.value.length - 1]
@@ -46,7 +46,12 @@ const optionsComing = computed(() => {
   )
 })
 const pendingLabel = computed(() => {
-  const base = memoryPending.value ? 'Actualizando la memoria…' : 'Preparando tus opciones…'
+  const base =
+    memoryPending.value && optionsPending.value
+      ? 'Actualizando la memoria y preparando tus opciones…'
+      : memoryPending.value
+        ? 'Actualizando la memoria…'
+        : 'Preparando tus opciones…'
   return agentAttempt.value > 1 ? `${base} reintentando (${agentAttempt.value}/${AGENT_ATTEMPTS})` : base
 })
 

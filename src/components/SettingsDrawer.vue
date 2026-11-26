@@ -119,6 +119,28 @@ const CLASSES = ['Bárbaro', 'Bardo', 'Brujo', 'Clérigo', 'Druida', 'Explorador
 const RACES = ['Humana', 'Elfa', 'Semielfa', 'Enana', 'Mediana', 'Gnoma', 'Tiflin', 'Dracónida', 'Semiorca']
 const PROMPT_MARKERS = ['{{tema}}', '{{mundo}}', '{{personaje}}', '{{nombre}}', '{{clase}}', '{{raza}}']
 
+const AGENT_EFFORTS: Array<{
+  key: 'reasoning' | 'memoryReasoning' | 'optionsReasoning'
+  label: string
+  hint: string
+}> = [
+  {
+    key: 'reasoning',
+    label: 'Narración (DM)',
+    hint: 'Escribe la escena y resuelve el turno.',
+  },
+  {
+    key: 'memoryReasoning',
+    label: 'Cronista de estado',
+    hint: 'Actualiza la memoria; corre en paralelo con las opciones.',
+  },
+  {
+    key: 'optionsReasoning',
+    label: 'Opciones',
+    hint: 'Propone las 5 acciones; corre en paralelo con el Cronista.',
+  },
+]
+
 const draft = reactive<Settings>({ ...DEFAULT_SETTINGS })
 const error = ref('')
 const showKey = ref(false)
@@ -634,20 +656,44 @@ async function onInstall() {
       </div>
 
       <div>
-        <span class="field-label">Razonamiento</span>
-        <div class="seg flex-wrap" role="group" aria-label="Nivel de razonamiento">
-          <button
-            v-for="level in REASONING_LEVELS"
-            :key="level"
-            type="button"
-            class="seg-item"
-            :aria-pressed="draft.reasoning === level"
-            @click="draft.reasoning = level"
-          >
-            {{ level }}
-          </button>
+        <span class="field-label">Razonamiento por agente</span>
+        <p class="mb-2 text-xs leading-5 text-faint">
+          Cada agente usa su nivel en la próxima llamada. Más esfuerzo = más cuidado, pero más
+          lento y más caro.
+        </p>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div v-for="agent in AGENT_EFFORTS" :key="agent.key">
+            <span class="field-label">{{ agent.label }}</span>
+            <div
+              class="seg flex-wrap"
+              role="group"
+              :aria-label="`Nivel de razonamiento: ${agent.label}`"
+            >
+              <button
+                v-for="level in REASONING_LEVELS"
+                :key="level"
+                type="button"
+                class="seg-item"
+                :aria-pressed="draft[agent.key] === level"
+                @click="draft[agent.key] = level"
+              >
+                {{ level }}
+              </button>
+            </div>
+            <p class="field-hint">{{ agent.hint }}</p>
+          </div>
         </div>
-        <p class="field-hint">Más razonamiento = respuestas más cuidadas pero más lentas. <strong class="text-gold">max</strong> puede tardar minutos.</p>
+        <p class="mt-2 text-xs leading-5 text-faint">
+          El <strong class="text-parchment">lore</strong> tiene su propio selector en la pestaña
+          <button
+            type="button"
+            class="text-gold underline decoration-gold-dim/60 underline-offset-2 hover:text-gold-bright"
+            @click="settingsTab = 'world'"
+          >
+            Mundo
+          </button>.
+          <strong class="text-gold">max</strong> puede tardar minutos.
+        </p>
       </div>
 
       <div class="grid gap-4 sm:grid-cols-2">
@@ -801,7 +847,7 @@ async function onInstall() {
       </div>
 
       <div>
-        <span class="field-label">Esfuerzo del modelo</span>
+        <span class="field-label">Esfuerzo del lore</span>
         <div class="seg flex-wrap" role="group" aria-label="Esfuerzo de razonamiento para el contexto del mundo">
           <button
             v-for="level in REASONING_LEVELS"
@@ -817,9 +863,10 @@ async function onInstall() {
         </div>
         <p class="field-hint">
           Se usa al <strong class="text-parchment">generar de cero</strong> y al
-          <strong class="text-parchment">aplicar la plantilla</strong>; no cambia el razonamiento de la
-          partida. <strong class="text-gold">medium</strong> basta casi siempre; sube el esfuerzo con
-          textos muy largos o franquicias poco conocidas.
+          <strong class="text-parchment">aplicar la plantilla</strong>; es independiente del
+          esfuerzo de los agentes de la partida (Conexión → Razonamiento por agente).
+          <strong class="text-gold">medium</strong> basta casi siempre; sube el esfuerzo con textos
+          muy largos o franquicias poco conocidas.
         </p>
       </div>
 

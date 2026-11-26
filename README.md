@@ -118,6 +118,7 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 - Panel lateral (escritorio) o cajón (móvil) con personaje, **escena**, **combate activo**, hoja, inventario, dinero, condiciones, misiones, pistas y PNJ.
 - La sección **Trama (solo DM)** está oculta por defecto (spoilers); se puede mostrar en *Lectura y voz*.
 - Editor de memoria dedicado. Cada turno guarda una instantánea de la memoria, lo que permite deshacer y regenerar sin corromperla. El botón **Compactar** reescribe la memoria con el modelo para eliminar redundancias; el resultado se revisa antes de guardarlo.
+- **Estado del Cronista:** mientras actualiza la memoria, el chat muestra un aviso con spinner (aunque las opciones ya estén visibles) y el panel lateral marca «Memoria · actualizando…», con el número de intento si hay reintentos.
 
 ### Contexto del mundo (lore)
 - Pestaña **Ajustes → Mundo**: un editor donde escribes lo que el DM debe saber del mundo (cronología, lugares, facciones, PNJs, reglas, vocabulario). Se añade al prompt como **canon**, después de las reglas del DM y antes de la memoria, para que una franquicia de videojuegos, películas o series se narre fiel al original.

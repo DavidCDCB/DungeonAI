@@ -106,8 +106,10 @@ const optionsPending = ref(false)
  */
 const memoryPending = ref(false)
 const compacting = ref(false)
-/** Intento en curso de los agentes en segundo plano (1 = el primero; se reintentan solos). */
-const agentAttempt = ref(1)
+/** Intento en curso del Cronista de estado (1 = el primero; se reintenta solo). */
+const memoryAttempt = ref(1)
+/** Intento en curso del Arquitecto de Opciones (1 = el primero; se reintenta solo). */
+const optionsAttempt = ref(1)
 /** Final del razonamiento recibido: solo alimenta el fondo difuminado de la espera. */
 const reasoningTail = ref('')
 let tailStampedAt = 0
@@ -213,7 +215,6 @@ const optionsMissing = computed(() => {
   return Boolean(
     !loading.value &&
       !optionsPending.value &&
-      !memoryPending.value &&
       last &&
       last.role === 'assistant' &&
       !last.diceRequest &&
@@ -977,7 +978,7 @@ async function refreshMemory(message: ChatMessage, effort: Reasoning | null): Pr
   memoryController = controller
   memoryTarget = message.id
   memoryPending.value = true
-  agentAttempt.value = 1
+  memoryAttempt.value = 1
   try {
     // Sin streaming: si falla (red, tiempo, respuesta inválida) se repite sola hasta 3 veces.
     const incoming = await withRetries(
@@ -993,7 +994,7 @@ async function refreshMemory(message: ChatMessage, effort: Reasoning | null): Pr
         if (parsed === null) throw new ApiError('El Cronista no devolvió un bloque [ESTADO] válido.')
         return parsed
       },
-      { signal: controller.signal, onAttempt: (attempt) => (agentAttempt.value = attempt) },
+      { signal: controller.signal, onAttempt: (attempt) => (memoryAttempt.value = attempt) },
     )
     const index = messages.value.findIndex((item) => item.id === message.id)
     if (controller.signal.aborted || index === -1) return
@@ -1112,7 +1113,7 @@ async function fetchOptions(
   optionsController = controller
   optionsFor = message.id
   optionsPending.value = true
-  agentAttempt.value = 1
+  optionsAttempt.value = 1
   try {
     // Sin streaming: se repite sola hasta 3 veces si falla o si no devuelve 5 opciones válidas.
     const generated = await withRetries(
@@ -1130,7 +1131,7 @@ async function fetchOptions(
         }
         return reply
       },
-      { signal: controller.signal, onAttempt: (attempt) => (agentAttempt.value = attempt) },
+      { signal: controller.signal, onAttempt: (attempt) => (optionsAttempt.value = attempt) },
     )
     // La partida pudo avanzar mientras tanto: solo se aplica si sigue siendo la última respuesta.
     if (controller.signal.aborted || optionsFor !== message.id) return
@@ -1693,7 +1694,8 @@ export function useGame() {
     optionsPending,
     memoryPending,
     compacting,
-    agentAttempt,
+    memoryAttempt,
+    optionsAttempt,
     reasoningTail,
     optionsMissing,
     generateOptions,

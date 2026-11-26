@@ -8,13 +8,37 @@ import { formatNumber } from '../lib/format'
 import { useConfirm } from '../composables/useConfirm'
 import { useToasts } from '../composables/useToasts'
 
-const { memoryOpen, gameState, updateMemory, loading, memoryPending, compacting, compactMemory } = useGame()
+const {
+  memoryOpen,
+  gameState,
+  updateMemory,
+  loading,
+  memoryPending,
+  memoryAttempt,
+  compacting,
+  compactMemory,
+} = useGame()
 const { push } = useToasts()
 const { ask } = useConfirm()
 const text = ref('')
+/** Texto con el que se abrió el editor, para no pisar cambios manuales. */
+let openedWith = ''
 
 watch(memoryOpen, (open) => {
-  if (open) text.value = gameState.value
+  if (open) {
+    text.value = gameState.value
+    openedWith = gameState.value
+  }
+})
+
+// Si el Cronista termina mientras el editor está abierto y no se tocó el texto, se muestra
+// la memoria nueva en vez de dejar una versión obsoleta que podría sobrescribirla al guardar.
+watch(memoryPending, (pending) => {
+  if (!memoryOpen.value || pending) return
+  if (text.value === openedWith) {
+    text.value = gameState.value
+    openedWith = gameState.value
+  }
 })
 
 const tokens = computed(() => estimateTokens(text.value))
@@ -58,6 +82,16 @@ async function compact() {
       <ScrollText class="h-4 w-4" />
     </template>
     <p
+      v-if="memoryPending"
+      class="mb-3 flex items-start gap-2 rounded-xl border border-gold-dim/40 bg-gold/[0.06] px-3 py-2 text-xs leading-5 text-gold-bright"
+      role="status"
+      aria-live="polite"
+    >
+      <LoaderCircle class="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
+      El Cronista está actualizando la memoria{{ memoryAttempt > 1 ? ` (intento ${memoryAttempt})` : '' }}.
+      Podrás editarla cuando termine.
+    </p>
+    <p
       v-if="hasSecrets"
       class="mb-3 flex items-start gap-2 rounded-xl border border-arcane/30 bg-arcane/[0.06] px-3 py-2 text-xs leading-5 text-arcane"
     >
@@ -72,7 +106,7 @@ async function compact() {
       spellcheck="false"
       class="field resize-y font-mono text-[12.5px] leading-5 pointer-coarse:text-base"
       placeholder="Escena: ...&#10;Hoja: ...&#10;Inventario: ...&#10;Dinero: ...&#10;Pistas y documentos: ..."
-      :readonly="compacting"
+      :readonly="compacting || memoryPending"
       data-autofocus
     />
     <p class="field-hint">

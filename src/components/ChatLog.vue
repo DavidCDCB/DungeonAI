@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArrowDown } from '@lucide/vue'
+import { ArrowDown, LoaderCircle } from '@lucide/vue'
 import { useGame } from '../composables/useGame'
 import DmMessage from './DmMessage.vue'
 import PlayerMessage from './PlayerMessage.vue'
@@ -17,7 +17,8 @@ const {
   loading,
   optionsPending,
   memoryPending,
-  agentAttempt,
+  memoryAttempt,
+  optionsAttempt,
   optionsMissing,
   generateOptions,
   settings,
@@ -32,27 +33,22 @@ const visibleCount = ref(PAGE)
 const follow = ref(false)
 const showJump = ref(false)
 
-/** La última respuesta lleva opciones: se están generando o aún no empezaron a generarse. */
-const optionsComing = computed(() => {
-  if (optionsPending.value) return true
-  const last = messages.value[messages.value.length - 1]
-  return Boolean(
-    memoryPending.value &&
-      last &&
-      last.role === 'assistant' &&
-      !last.diceRequest &&
-      !last.options.length &&
-      last.display.trim(),
-  )
-})
+/** La última respuesta lleva opciones y se están generando. */
+const optionsComing = computed(() => optionsPending.value)
+const attemptNote = (attempt: number): string =>
+  attempt > 1 ? ` · reintentando (${attempt}/${AGENT_ATTEMPTS})` : ''
+const memoryStatus = computed(() => `Actualizando la memoria…${attemptNote(memoryAttempt.value)}`)
+const optionsStatus = computed(() => `Preparando tus opciones…${attemptNote(optionsAttempt.value)}`)
 const pendingLabel = computed(() => {
-  const base =
-    memoryPending.value && optionsPending.value
-      ? 'Actualizando la memoria y preparando tus opciones…'
-      : memoryPending.value
-        ? 'Actualizando la memoria…'
-        : 'Preparando tus opciones…'
-  return agentAttempt.value > 1 ? `${base} reintentando (${agentAttempt.value}/${AGENT_ATTEMPTS})` : base
+  if (memoryPending.value && optionsPending.value) {
+    const retries = [
+      memoryAttempt.value > 1 ? `memoria ${memoryAttempt.value}/${AGENT_ATTEMPTS}` : '',
+      optionsAttempt.value > 1 ? `opciones ${optionsAttempt.value}/${AGENT_ATTEMPTS}` : '',
+    ].filter(Boolean)
+    const note = retries.length ? ` · reintentando ${retries.join(' y ')}` : ''
+    return `Actualizando la memoria y preparando tus opciones…${note}`
+  }
+  return memoryPending.value ? memoryStatus.value : optionsStatus.value
 })
 
 const hiddenCount = computed(() => Math.max(0, displayMessages.value.length - visibleCount.value))
@@ -249,13 +245,19 @@ defineExpose({ container })
                 <div v-for="n in 5" :key="n" class="h-[3.25rem] animate-pulse rounded-xl border border-divider bg-surface/40" :style="{ animationDelay: `${n * 120}ms` }" />
               </div>
             </section>
-            <p v-else-if="memoryPending" class="shimmer-text animate-fade-up text-xs" role="status" aria-live="polite">
-              {{ pendingLabel }}
-            </p>
             <section v-else-if="optionsMissing" class="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-divider px-4 py-3 text-sm text-muted">
               <span>Este turno no tiene opciones.</span>
               <button type="button" class="btn-sm" @click="generateOptions">Generar opciones</button>
             </section>
+            <p
+              v-if="memoryPending && !optionsComing"
+              class="animate-fade-up inline-flex w-fit items-center gap-2 rounded-full border border-gold-dim/40 bg-gold/[0.07] px-3 py-1.5 text-xs text-gold-bright"
+              role="status"
+              aria-live="polite"
+            >
+              <LoaderCircle class="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              {{ memoryStatus }}
+            </p>
           </div>
         </template>
       </div>

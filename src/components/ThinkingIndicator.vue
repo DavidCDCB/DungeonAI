@@ -5,15 +5,15 @@ import { formatElapsed, formatNumber, formatRate } from '../lib/format'
 import { PACE_LABELS, paceBars, paceIntensity, paceTier } from '../lib/pace'
 import ReasoningOrb from './ReasoningOrb.vue'
 
-const { phase, turnStartedAt, now, liveStats, settings, cancelTurn, reasoningTail, agentAttempt } = useGame()
+const { phase, turnStartedAt, now, liveStats, settings, cancelTurn, reasoningTail, memoryAttempt } = useGame()
 
 const BARS = 5
 
 const elapsed = computed(() => formatElapsed(now.value - turnStartedAt.value))
 const label = computed(() => {
   if (phase.value === 'memory') {
-    return agentAttempt.value > 1
-      ? `Actualizando la memoria de la partida (intento ${agentAttempt.value})`
+    return memoryAttempt.value > 1
+      ? `Actualizando la memoria de la partida (intento ${memoryAttempt.value})`
       : 'Actualizando la memoria de la partida'
   }
   if (phase.value === 'thinking') return 'El Dungeon Master medita su respuesta'

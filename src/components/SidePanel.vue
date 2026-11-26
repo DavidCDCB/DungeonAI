@@ -11,6 +11,7 @@ import {
   Flag,
   Globe,
   HeartPulse,
+  LoaderCircle,
   MapPin,
   NotebookPen,
   Pencil,
@@ -25,6 +26,7 @@ import { useGame } from '../composables/useGame'
 import { isActiveCombat, memoryEntries } from '../lib/gameState'
 import { providerFor } from '../lib/providers'
 import { loreTokens } from '../lib/lore'
+import { AGENT_ATTEMPTS } from '../lib/retry'
 import { formatNumber, formatRate, formatTokens } from '../lib/format'
 
 const {
@@ -34,6 +36,8 @@ const {
   browserVoices,
   contextOpen,
   memoryOpen,
+  memoryPending,
+  memoryAttempt,
   openSettings,
   setAutoRead,
   updateSetting,
@@ -71,6 +75,11 @@ const voiceLabel = computed(() => {
 
 const providerLabel = computed(() => providerFor(settings.baseUrl).label)
 const worldTokens = computed(() => loreTokens(settings.lore))
+const memoryStatus = computed(() =>
+  memoryAttempt.value > 1
+    ? `actualizando… (${memoryAttempt.value}/${AGENT_ATTEMPTS})`
+    : 'actualizando…',
+)
 </script>
 
 <template>
@@ -135,12 +144,16 @@ const worldTokens = computed(() => loreTokens(settings.lore))
       <p class="mt-2 text-xs leading-5 whitespace-pre-wrap text-parchment">{{ scene.body }}</p>
     </section>
 
-    <section class="card p-4">
-      <div class="flex items-center">
+    <section class="card p-4 transition-colors" :class="memoryPending ? 'border-gold-dim/60' : ''">
+      <div class="flex items-center gap-2">
         <p class="eyebrow">
-          <ScrollText class="h-3.5 w-3.5" />
+          <LoaderCircle v-if="memoryPending" class="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+          <ScrollText v-else class="h-3.5 w-3.5" />
           Memoria
         </p>
+        <span v-if="memoryPending" class="text-[10px] font-medium text-gold-bright">
+          {{ memoryStatus }}
+        </span>
         <button
           type="button"
           class="ml-auto inline-flex items-center gap-1 text-xs text-muted hover:text-gold-bright"

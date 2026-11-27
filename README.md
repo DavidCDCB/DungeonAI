@@ -104,14 +104,14 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 - **Esfuerzo por agente:** en *Ajustes → Conexión* cada agente (narración, Cronista y Opciones) tiene su propio nivel `low`–`max`; el lore tiene el suyo en *Mundo*. Se aplica desde la próxima llamada.
 - **Regenerar** la última respuesta del DM; si falla, se restaura la anterior.
 - **Editar** cualquier mensaje tuyo: deshace desde ese punto, devuelve el texto al cuadro y la memoria vuelve a como estaba. El aviso trae **Deshacer**.
-- **Comandos OOC** desde el menú del compositor: hoja, inventario, misiones, resumen, «lanza por mí», cambiar de escena.
+- **Comandos OOC** desde el menú del compositor: hoja, inventario, misiones, resumen, cambiar de escena.
 - El borrador se guarda solo. Las campañas largas se paginan (60 mensajes, «Mostrar anteriores»).
 
 ### Dados
 
-- Cuando el DM pide una tirada, la app lee la notación (`1d20 + 5`, `1d8`, «con ventaja», «6 grupos de 4d6 descartando el más bajo») y ofrece botones **Lanzar 1d20 + 5**.
-- Lanzador con d4–d100, cantidad, modificador, **ventaja/desventaja** y **descartar el menor**, varias tiradas por mensaje y sugerencias del DM.
-- La tirada se envía en el mismo momento en que se lanza. La animación es solo visual, así que cerrar el diálogo no permite repetirla. Los resultados se muestran como tarjetas, con el dado descartado tachado y el **crítico** o la **pifia** resaltados.
+- Cuando el DM pide una tirada, la app lee la notación (`1d20 + 5`, `1d8`, «con ventaja», «6 grupos de 4d6 descartando el más bajo») y muestra **un único botón** con todas las tiradas de la petición: **Lanzar 1d20 + 5**. Mientras la tirada está pendiente, el compositor y el campo de texto se ocultan: ese botón es la única acción.
+- No hay lanzador manual: los dados solo se lanzan cuando el DM los pide. La notación admite d4–d100, cantidad, modificador, **ventaja/desventaja** y **descartar el menor**; si la petición incluye ataque y daño, el botón lanza ambas tiradas juntas.
+- La tirada se envía en el mismo momento en que se lanza. Los resultados se muestran como tarjetas, con el dado descartado tachado y el **crítico** o la **pifia** resaltados.
 
 ### Memoria y panel
 
@@ -166,7 +166,7 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 ### En el móvil
 
 - El teclado encoge la app (`interactive-widget=resizes-content`): el compositor queda sobre el teclado y el chat sigue anclado al final.
-- Compositor en una sola fila (dados · comandos · texto · enviar); la línea de tokens se oculta mientras escribes.
+- Compositor en una sola fila (comandos · texto · enviar); la línea de tokens se oculta mientras escribes.
 - Funciona con Gboard: el botón Enviar se activa aunque la palabra siga «en composición».
 - Objetivos táctiles de 40–44 px y acciones de los mensajes siempre visibles en pantallas táctiles (también en horizontal).
 - El gesto **atrás** de Android cierra el diálogo abierto en lugar de salir de la app.
@@ -177,7 +177,7 @@ Es una PWA. En Android, usa **Instalar app**; en iOS, Compartir → **Añadir a 
 ### Accesibilidad
 
 - Diálogos con foco atrapado, `Esc` y restauración del foco; región `aria-live` para avisar de respuestas nuevas; enlace «saltar al compositor»; respeta `prefers-reduced-motion`.
-- Atajos: `1`–`5` opciones · `D` dados · `/` escribir · `Esc` cerrar.
+- Atajos: `1`–`5` opciones · `/` escribir · `Esc` cerrar.
 
 ## Instálala como app
 

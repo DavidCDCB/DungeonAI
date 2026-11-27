@@ -19,7 +19,7 @@ import {
   requestOptions,
   type StreamProgress,
 } from '../lib/api'
-import { messageFor, rollRequest, suggestDice, toGroup } from '../lib/dice'
+import { messageFor, rollRequest, suggestDice } from '../lib/dice'
 import { hasFullState, memoryAfter, mergeState, parseStateReply } from '../lib/gameState'
 import {
   createMessage,
@@ -1311,23 +1311,7 @@ function setAutoRead(value: boolean) {
 // Dados
 // ---------------------------------------------------------------------------
 
-function openDice(prefill?: DiceRequest[]) {
-  if (!ensureConfigured()) return
-  if (loading.value) return
-  diceResults.value = null
-  const stored = loadDiceGroups()
-  if (prefill?.length) diceGroups.value = prefill.map(toGroup)
-  else if (stored) diceGroups.value = stored
-  else if (diceSuggestions.value.length) diceGroups.value = diceSuggestions.value[0].requests.map(toGroup)
-  else diceGroups.value = defaultDice()
-  diceOpen.value = true
-}
-
 function closeDice() {
-  if (!diceResults.value) {
-    track(saveDiceGroups(diceGroups.value))
-    scheduleCloudSave()
-  }
   diceResults.value = null
   diceOpen.value = false
 }
@@ -1725,7 +1709,6 @@ export function useGame() {
     contextOpen,
     memoryOpen,
     panelOpen,
-    diceGroups,
     browserVoices,
     speakingId,
     ttsPaused,
@@ -1767,7 +1750,6 @@ export function useGame() {
     disableCloud,
     restoreFromCloud,
     flushCloudSave,
-    openDice,
     closeDice,
     rollAndSend,
     refreshBrowserVoices,

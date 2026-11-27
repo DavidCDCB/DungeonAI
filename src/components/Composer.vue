@@ -13,9 +13,11 @@ import {
   X,
 } from '@lucide/vue'
 import { useGame } from '../composables/useGame'
+import { useDialogStack } from '../composables/useDialogStack'
 import { formatNumber, formatRate, formatTokens } from '../lib/format'
 import { parseRollMessage } from '../lib/dice'
 import { OOC_COMMANDS } from '../lib/commands'
+import type { DiceRequest } from '../types'
 
 const {
   settings,
@@ -27,7 +29,6 @@ const {
   diceRequested,
   diceSuggestions,
   rollAndSend,
-  openDice,
   errorMessage,
   errorKind,
   retry,
@@ -44,16 +45,31 @@ const {
   openSettings,
 } = useGame()
 
+/** Con una tirada pendiente el compositor desaparece: solo queda el botón de tirada. */
+const dicePending = computed(() => diceRequested.value && !loading.value)
+/** Respaldo si el DM pidió tirada pero no escribió una notación legible. */
+const fallbackRoll: DiceRequest = { sides: 20, count: 1, bonus: 0, mode: 'normal' }
+/** Todas las notaciones de la petición se lanzan juntas con un solo botón. */
+const diceLaunch = computed<DiceRequest[]>(() => {
+  const requests = diceSuggestions.value.flatMap((suggestion) => suggestion.requests)
+  return requests.length ? requests : [fallbackRoll]
+})
+const diceLaunchLabel = computed(() => {
+  const labels = diceSuggestions.value.map((suggestion) => suggestion.label)
+  return labels.length ? labels.join(' y ') : '1d20'
+})
+
 const textarea = ref<HTMLTextAreaElement | null>(null)
+const diceButton = ref<HTMLButtonElement | null>(null)
 const menuOpen = ref(false)
 const menuRoot = ref<HTMLElement | null>(null)
+const { depth } = useDialogStack()
 
 const commands = OOC_COMMANDS
 
 const placeholder = computed(() => {
   if (!hasMessages.value) return '¿Cómo quieres empezar?'
   if (loading.value) return 'Tu próxima acción…'
-  if (diceRequested.value) return 'Lanza o responde al DM…'
   return `¿Qué hace ${settings.character}?`
 })
 
@@ -98,6 +114,13 @@ watch(composerFocusNonce, async () => {
   element.focus()
   element.setSelectionRange(element.value.length, element.value.length)
   autosize()
+})
+
+// Al desaparecer el compositor, el foco pasa al único control disponible.
+watch(dicePending, async (pending) => {
+  if (!pending) return
+  await nextTick()
+  if (depth.value === 0) diceButton.value?.focus()
 })
 
 /**
@@ -197,40 +220,32 @@ defineExpose({ focus: () => textarea.value?.focus() })
       </div>
 
       <div
-        v-if="diceRequested && !loading"
+        v-if="dicePending"
         class="animate-fade-up rounded-2xl border border-gold-dim/50 bg-gradient-to-r from-gold/[0.12] via-gold/[0.05] to-transparent p-2.5 sm:p-3"
       >
         <p class="flex items-center gap-2 px-0.5 text-[13px] font-medium text-gold-bright sm:text-sm">
           <Dices class="h-4 w-4" />
           El Dungeon Master pide una tirada
         </p>
-        <div
-          class="-mx-2.5 mt-2 flex gap-2 overflow-x-auto px-2.5 pb-0.5 [scrollbar-width:none] sm:mx-0 sm:mt-2.5 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden"
-        >
+        <div class="mt-2 grid gap-2 sm:mt-2.5">
           <button
-            v-for="suggestion in diceSuggestions"
-            :key="suggestion.label"
+            ref="diceButton"
             type="button"
-            class="btn-primary btn-sm shrink-0 whitespace-nowrap"
-            @click="rollAndSend(suggestion.requests)"
+            class="btn-primary btn-sm w-full justify-center sm:w-auto"
+            @click="rollAndSend(diceLaunch)"
           >
             <Dices class="h-3.5 w-3.5" />
-            Lanzar {{ suggestion.label }}
-          </button>
-          <button type="button" class="btn-ghost btn-sm shrink-0 whitespace-nowrap" @click="openDice()">
-            {{ diceSuggestions.length ? 'Otra tirada…' : 'Elegir dados…' }}
-          </button>
-          <button type="button" class="btn-ghost btn-sm shrink-0 whitespace-nowrap" @click="send('<lanza por mí>')">
-            Que lance el DM
+            Lanzar {{ diceLaunchLabel }}
           </button>
         </div>
       </div>
 
       <!--
-        Móvil: una sola fila (dados · comandos · texto · enviar), como un chat.
+        Móvil: una sola fila (comandos · texto · enviar), como un chat.
         Desde sm: texto arriba y herramientas debajo.
       -->
       <div
+        v-if="!dicePending"
         class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-x-0.5 rounded-2xl border border-divider bg-surface-high/90 p-1 shadow-[0_18px_40px_-28px_rgb(0_0_0/0.9)] transition [grid-template-areas:'tools_text_send'] focus-within:border-[#4a4152] sm:gap-x-1 sm:p-0 sm:[grid-template-areas:'text_text_text'_'tools_hint_send']"
       >
         <label for="composer" class="sr-only">Tu acción</label>
@@ -248,17 +263,6 @@ defineExpose({ focus: () => textarea.value?.focus() })
           @input="onInput"
         />
         <div class="flex items-center gap-0.5 [grid-area:tools] sm:gap-1 sm:pb-2 sm:pl-2">
-          <button
-            type="button"
-            class="icon-btn-sm h-9 w-9 pointer-coarse:h-11 pointer-coarse:w-10 sm:pointer-coarse:w-11"
-            :class="diceRequested && !loading ? 'animate-glow text-gold' : ''"
-            :disabled="!hasMessages || loading"
-            aria-label="Lanzar dados"
-            title="Lanzar dados (D)"
-            @click="openDice()"
-          >
-            <Dices class="h-[18px] w-[18px]" />
-          </button>
           <div ref="menuRoot" class="relative" @focusout="onMenuFocusOut">
             <button
               type="button"
@@ -333,6 +337,7 @@ defineExpose({ focus: () => textarea.value?.focus() })
       </div>
 
       <div
+        v-if="!dicePending"
         class="flex min-h-5 items-center gap-3 px-1 text-[11px] text-faint short:hidden max-sm:group-has-[textarea:focus]/composer:hidden"
       >
         <button
@@ -351,7 +356,7 @@ defineExpose({ focus: () => textarea.value?.focus() })
         </span>
         <span class="ml-auto hidden items-center gap-1 lg:inline-flex">
           <span class="kbd">1</span>–<span class="kbd">5</span> opciones ·
-          <span class="kbd">D</span> dados · <span class="kbd">/</span> escribir
+          <span class="kbd">/</span> escribir
         </span>
       </div>
     </div>

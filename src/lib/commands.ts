@@ -4,6 +4,5 @@ export const OOC_COMMANDS = [
   { label: 'Inventario', command: '<inventario>' },
   { label: 'Misiones', command: '<misiones>' },
   { label: 'Resumen de la historia', command: '<resumen>' },
-  { label: 'Lanza los dados por mí', command: '<lanza por mí>' },
   { label: 'Cambiar de escena', command: '<cambiemos de escena>' },
 ] as const

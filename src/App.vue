@@ -24,11 +24,9 @@ const {
   panelOpen,
   loading,
   visibleOptions,
-  hasMessages,
   init,
   send,
   newGame,
-  openDice,
   focusComposer,
   exportProgress,
   speakingId,
@@ -84,11 +82,6 @@ function onKeydown(event: KeyboardEvent) {
     if (option && !loading.value) {
       event.preventDefault()
       void send(option)
-    }
-  } else if (event.key === 'd' || event.key === 'D') {
-    if (hasMessages.value && !loading.value) {
-      event.preventDefault()
-      openDice()
     }
   } else if (event.key === '/') {
     event.preventDefault()
